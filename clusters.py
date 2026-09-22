@@ -303,7 +303,7 @@ def _(Attention, mo, np, num_tokens_2d_input, torch):
 
     Attn2d = Attention(
         K=torch.eye(2, dtype=torch.float64),
-        Q=Q+ torch.eye(2),
+        Q=Q + torch.eye(2),
         V=V,
         X=_initial_tokens_2d,
         T=100,
@@ -319,8 +319,17 @@ def _(Attention, mo, np, num_tokens_2d_input, torch):
         if _nonfinite_steps_2d.numel()
         else Attn2d.num_steps
     )
-    _times_2d = np.arange(_num_frames_2d) * Attn2d.dt
-    _last_frame_2d = _num_frames_2d - 1
+    _max_visualization_frames_2d = 401
+    _frame_indices_2d = np.unique(
+        np.linspace(
+            0,
+            _num_frames_2d - 1,
+            min(_num_frames_2d, _max_visualization_frames_2d),
+            dtype=int,
+        )
+    )
+    _times_2d = _frame_indices_2d * Attn2d.dt
+    _last_frame_2d = len(_frame_indices_2d) - 1
     _edge_scale_2d = 8.0
     _edge_threshold_2d = 1e-4
     _edge_bins_2d = 12
@@ -429,7 +438,8 @@ def _(Attention, mo, np, num_tokens_2d_input, torch):
         )
 
     _frame_content_2d = [
-        _connection_frame_2d(_index_2d) for _index_2d in range(_num_frames_2d)
+        _connection_frame_2d(int(_simulation_index_2d))
+        for _simulation_index_2d in _frame_indices_2d
     ]
     _trace_indices_2d = list(range(len(_frame_content_2d[0][0])))
     _frames_2d = [
@@ -443,7 +453,7 @@ def _(Attention, mo, np, num_tokens_2d_input, torch):
                 yaxis={"range": _frame_content_2d[_index_2d][2]},
             ),
         )
-        for _index_2d in range(_num_frames_2d)
+        for _index_2d in range(len(_frame_indices_2d))
     ]
     _slider_steps_2d = [
         {
@@ -683,8 +693,17 @@ def _(Attn2d, mo, np, torch):
         if _nonfinite_matrix_steps.numel()
         else Attn2d.num_steps
     )
-    _matrix_times = np.arange(_num_matrix_frames) * Attn2d.dt
-    _matrix_last_frame = _num_matrix_frames - 1
+    _max_matrix_frames = 401
+    _matrix_frame_indices = np.unique(
+        np.linspace(
+            0,
+            _num_matrix_frames - 1,
+            min(_num_matrix_frames, _max_matrix_frames),
+            dtype=int,
+        )
+    )
+    _matrix_times = _matrix_frame_indices * Attn2d.dt
+    _matrix_last_frame = len(_matrix_frame_indices) - 1
     _matrix_token_labels = np.arange(
         1,
         Attn2d.num_tokens + 1,
@@ -692,10 +711,10 @@ def _(Attn2d, mo, np, torch):
     )
     _matrix_frames = [
         _go_2d_matrix.Frame(
-            name=str(_index),
+            name=str(_frame_position),
             data=[
                 _go_2d_matrix.Heatmap(
-                    z=Attn2d.P[_index]
+                    z=Attn2d.P[_simulation_index]
                     .detach()
                     .cpu()
                     .numpy()
@@ -709,10 +728,14 @@ def _(Attn2d, mo, np, torch):
             ],
             traces=[0],
             layout=_go_2d_matrix.Layout(
-                title_text=f"2D Attention Matrix at t={_matrix_times[_index]:.2f}"
+                title_text=(
+                    f"2D Attention Matrix at t={_matrix_times[_frame_position]:.2f}"
+                )
             ),
         )
-        for _index in range(_num_matrix_frames)
+        for _frame_position, _simulation_index in enumerate(
+            _matrix_frame_indices
+        )
     ]
     _matrix_slider_steps = [
         {
@@ -729,10 +752,11 @@ def _(Attn2d, mo, np, torch):
         }
         for _index, _time in enumerate(_matrix_times)
     ]
+    _matrix_final_simulation_index = _matrix_frame_indices[_matrix_last_frame]
     _two_d_matrix_figure = _go_2d_matrix.Figure(
         data=[
             _go_2d_matrix.Heatmap(
-                z=Attn2d.P[_matrix_last_frame]
+                z=Attn2d.P[_matrix_final_simulation_index]
                 .detach()
                 .cpu()
                 .numpy()
