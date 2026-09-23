@@ -279,250 +279,10 @@ def _(np, softmax, torch):
     return (Attention,)
 
 
-@app.cell
-def _(Attention, mo, np, num_tokens_2d_input, torch):
-    import plotly.graph_objects as _go_2d
-
-    _num_tokens_2d = int(num_tokens_2d_input.value)
-    _generator_2d = torch.Generator().manual_seed(_num_tokens_2d)
-    _initial_tokens_2d = (
-        torch.rand(
-            (2, _num_tokens_2d),
-            generator=_generator_2d,
-            dtype=torch.float64,
-        )
-        * 2
-        - 1
-    )
-
-    V = torch.rand((2, 2), dtype=torch.float64) * 2 - 1
-    V = V.T @ V
-
-    Q = torch.rand((2, 2), dtype=torch.float64) * 2 - 1
-    Q = Q.T @ Q
-
-    Attn2d = Attention(
-        K=torch.eye(2, dtype=torch.float64),
-        Q=Q + torch.eye(2),
-        V=V,
-        X=_initial_tokens_2d,
-        T=100,
-    )
-    Attn2d.rescaled_dynamics()
-
-    _finite_frames_2d = torch.isfinite(Attn2d.P).all(
-        dim=(1, 2)
-    ) & torch.isfinite(Attn2d.Z).all(dim=(1, 2))
-    _nonfinite_steps_2d = torch.where(~_finite_frames_2d)[0]
-    _num_frames_2d = (
-        int(_nonfinite_steps_2d[0])
-        if _nonfinite_steps_2d.numel()
-        else Attn2d.num_steps
-    )
-    _max_visualization_frames_2d = 401
-    _frame_indices_2d = np.unique(
-        np.linspace(
-            0,
-            _num_frames_2d - 1,
-            min(_num_frames_2d, _max_visualization_frames_2d),
-            dtype=int,
-        )
-    )
-    _times_2d = _frame_indices_2d * Attn2d.dt
-    _last_frame_2d = len(_frame_indices_2d) - 1
-    _edge_scale_2d = 8.0
-    _edge_threshold_2d = 1e-4
-    _edge_bins_2d = 12
-
-    def _connection_frame_2d(_index):
-        _tokens = Attn2d.Z[_index]
-        _keys = (
-            (Attn2d.K @ _tokens)
-            .detach()
-            .cpu()
-            .numpy()
-            .T.astype(np.float32, copy=False)
-        )
-        _queries = (
-            (Attn2d.Q @ _tokens)
-            .detach()
-            .cpu()
-            .numpy()
-            .T.astype(np.float32, copy=False)
-        )
-        _attention = Attn2d.P[_index].detach().cpu().numpy()
-        _edge_coordinates = [([], []) for _ in range(_edge_bins_2d)]
-
-        for _query_index in range(Attn2d.num_tokens):
-            for _key_index in range(Attn2d.num_tokens):
-                _weight = float(_attention[_query_index, _key_index])
-                if _weight <= _edge_threshold_2d:
-                    continue
-                _bin = min(int(_weight * _edge_bins_2d), _edge_bins_2d - 1)
-                _x_values, _y_values = _edge_coordinates[_bin]
-                _x_values.extend(
-                    [_queries[_query_index, 0], _keys[_key_index, 0], np.nan]
-                )
-                _y_values.extend(
-                    [_queries[_query_index, 1], _keys[_key_index, 1], np.nan]
-                )
-
-        _traces = []
-        for _bin, (_x_values, _y_values) in enumerate(_edge_coordinates):
-            _representative_weight = (_bin + 0.5) / _edge_bins_2d
-            _traces.append(
-                _go_2d.Scatter(
-                    x=np.asarray(_x_values, dtype=np.float32),
-                    y=np.asarray(_y_values, dtype=np.float32),
-                    mode="lines",
-                    line={
-                        "color": "rgba(0, 0, 0, 0.45)",
-                        "width": _edge_scale_2d * _representative_weight,
-                    },
-                    hoverinfo="skip",
-                    visible=bool(_x_values),
-                    showlegend=False,
-                )
-            )
-
-        _traces.extend(
-            [
-                _go_2d.Scatter(
-                    x=_keys[:, 0],
-                    y=_keys[:, 1],
-                    mode="markers",
-                    name="Kx",
-                    text=[
-                        f"Key token {_i + 1}"
-                        for _i in range(Attn2d.num_tokens)
-                    ],
-                    hovertemplate="%{text}<br>(%{x:.3f}, %{y:.3f})<extra></extra>",
-                    marker={
-                        "size": 10,
-                        "color": "#a8deb5",
-                        "line": {"color": "black", "width": 1},
-                    },
-                ),
-                _go_2d.Scatter(
-                    x=_queries[:, 0],
-                    y=_queries[:, 1],
-                    mode="markers",
-                    name="Qx",
-                    text=[
-                        f"Query token {_i + 1}"
-                        for _i in range(Attn2d.num_tokens)
-                    ],
-                    hovertemplate="%{text}<br>(%{x:.3f}, %{y:.3f})<extra></extra>",
-                    marker={
-                        "size": 10,
-                        "color": "#d91c72",
-                        "line": {"color": "black", "width": 1},
-                    },
-                ),
-            ]
-        )
-
-        _points = np.vstack([_keys, _queries])
-        _x_center = float((_points[:, 0].min() + _points[:, 0].max()) / 2)
-        _y_center = float((_points[:, 1].min() + _points[:, 1].max()) / 2)
-        _span = max(
-            float(np.ptp(_points[:, 0])),
-            float(np.ptp(_points[:, 1])),
-            1e-6,
-        )
-        _half_span = 0.6 * _span
-        return (
-            _traces,
-            [_x_center - _half_span, _x_center + _half_span],
-            [_y_center - _half_span, _y_center + _half_span],
-        )
-
-    _frame_content_2d = [
-        _connection_frame_2d(int(_simulation_index_2d))
-        for _simulation_index_2d in _frame_indices_2d
-    ]
-    _trace_indices_2d = list(range(len(_frame_content_2d[0][0])))
-    _frames_2d = [
-        _go_2d.Frame(
-            name=str(_index_2d),
-            data=_frame_content_2d[_index_2d][0],
-            traces=_trace_indices_2d,
-            layout=_go_2d.Layout(
-                title_text=f"2D Key/Query Attention at t={_times_2d[_index_2d]:.2f}",
-                xaxis={"range": _frame_content_2d[_index_2d][1]},
-                yaxis={"range": _frame_content_2d[_index_2d][2]},
-            ),
-        )
-        for _index_2d in range(len(_frame_indices_2d))
-    ]
-    _slider_steps_2d = [
-        {
-            "method": "animate",
-            "args": [
-                [str(_index_2d)],
-                {
-                    "mode": "immediate",
-                    "frame": {"duration": 0, "redraw": True},
-                    "transition": {"duration": 0},
-                },
-            ],
-            "label": f"{_time_2d:.2f}",
-        }
-        for _index_2d, _time_2d in enumerate(_times_2d)
-    ]
-    _final_traces_2d, _final_x_range_2d, _final_y_range_2d = _frame_content_2d[
-        _last_frame_2d
-    ]
-    _two_d_attention_figure = _go_2d.Figure(
-        data=_final_traces_2d,
-        frames=_frames_2d,
-    )
-    _two_d_attention_figure.update_layout(
-        title=f"2D Key/Query Attention at t={_times_2d[_last_frame_2d]:.2f}",
-        height=800,
-        margin={"l": 55, "r": 30, "t": 90, "b": 110},
-        plot_bgcolor="white",
-        xaxis={
-            "range": _final_x_range_2d,
-            "showticklabels": False,
-            "ticks": "",
-            "showgrid": False,
-            "zeroline": False,
-            "constrain": "domain",
-        },
-        yaxis={
-            "range": _final_y_range_2d,
-            "showticklabels": False,
-            "ticks": "",
-            "showgrid": False,
-            "zeroline": False,
-            "constrain": "domain",
-            "scaleanchor": "x",
-            "scaleratio": 1,
-        },
-        legend={"orientation": "h", "x": 0.5, "xanchor": "center", "y": 1.04},
-        sliders=[
-            {
-                "active": _last_frame_2d,
-                "currentvalue": {"prefix": "Time: "},
-                "pad": {"t": 45},
-                "steps": _slider_steps_2d,
-            }
-        ],
-    )
-    two_d_attention_plot = mo.ui.plotly(
-        _two_d_attention_figure,
-        config={"responsive": True, "displaylogo": False},
-    )
-    mo.vstack([num_tokens_2d_input, two_d_attention_plot], gap=1.0)
-    return (Attn2d,)
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    There are som really interesting phenomenon happening above.
-    1. The phenomenon demonstrated in the paper doesn't always happen. Sometimes the $Kx_i$ and $Qx_i$ don't for two seperate clusters, but lie on affine spaces, often intersecting. I wonder why that is.
+ 
     """)
     return
 
@@ -533,14 +293,6 @@ def _(torch):
     z[:, 9] = torch.tensor([-10, -10, -10]) + torch.rand(3)
     Vz = z - z.T.unsqueeze(-1)
     Vz[-1]
-    return
-
-
-@app.cell
-def _(torch):
-    a = torch.tensor([1, 2, 3, 4, 5])
-    print(a.ndim, a.shape)
-    print(torch.eye(2))
     return
 
 
@@ -821,6 +573,260 @@ def _(mo):
         label="2D tokens",
     )
     return (num_tokens_2d_input,)
+
+
+@app.cell
+def _(Attention, mo, np, num_tokens_2d_input, torch):
+    import plotly.graph_objects as _go_2d
+
+    _num_tokens_2d = int(num_tokens_2d_input.value)
+    _generator_2d = torch.Generator().manual_seed(_num_tokens_2d)
+    _initial_tokens_2d = (
+        torch.rand(
+            (2, _num_tokens_2d),
+            generator=_generator_2d,
+            dtype=torch.float64,
+        )
+        * 2
+        - 1
+    )
+
+    V = torch.rand((2, 2), dtype=torch.float64) * 2 - 1
+    V = V.T @ V
+
+    Q = torch.rand((2, 2), dtype=torch.float64) * 2 - 1
+    Q = Q.T @ Q
+
+    Attn2d = Attention(
+        K=torch.eye(2, dtype=torch.float64),
+        Q=Q + torch.eye(2),
+        V=V,
+        X=_initial_tokens_2d,
+        T=100,
+    )
+    Attn2d.rescaled_dynamics()
+
+    _finite_frames_2d = torch.isfinite(Attn2d.P).all(
+        dim=(1, 2)
+    ) & torch.isfinite(Attn2d.Z).all(dim=(1, 2))
+    _nonfinite_steps_2d = torch.where(~_finite_frames_2d)[0]
+    _num_frames_2d = (
+        int(_nonfinite_steps_2d[0])
+        if _nonfinite_steps_2d.numel()
+        else Attn2d.num_steps
+    )
+    _max_visualization_frames_2d = 401
+    _frame_indices_2d = np.unique(
+        np.linspace(
+            0,
+            _num_frames_2d - 1,
+            min(_num_frames_2d, _max_visualization_frames_2d),
+            dtype=int,
+        )
+    )
+    _times_2d = _frame_indices_2d * Attn2d.dt
+    _last_frame_2d = len(_frame_indices_2d) - 1
+    _edge_scale_2d = 8.0
+    _edge_threshold_2d = 1e-4
+    _edge_bins_2d = 12
+
+    def _connection_frame_2d(_index):
+        _tokens = Attn2d.Z[_index]
+        _keys = (
+            (Attn2d.K @ _tokens)
+            .detach()
+            .cpu()
+            .numpy()
+            .T.astype(np.float32, copy=False)
+        )
+        _queries = (
+            (Attn2d.Q @ _tokens)
+            .detach()
+            .cpu()
+            .numpy()
+            .T.astype(np.float32, copy=False)
+        )
+        _attention = Attn2d.P[_index].detach().cpu().numpy()
+        _edge_coordinates = [([], []) for _ in range(_edge_bins_2d)]
+
+        for _query_index in range(Attn2d.num_tokens):
+            for _key_index in range(Attn2d.num_tokens):
+                _weight = float(_attention[_query_index, _key_index])
+                if _weight <= _edge_threshold_2d:
+                    continue
+                _bin = min(int(_weight * _edge_bins_2d), _edge_bins_2d - 1)
+                _x_values, _y_values = _edge_coordinates[_bin]
+                _x_values.extend(
+                    [_queries[_query_index, 0], _keys[_key_index, 0], np.nan]
+                )
+                _y_values.extend(
+                    [_queries[_query_index, 1], _keys[_key_index, 1], np.nan]
+                )
+
+        _traces = []
+        for _bin, (_x_values, _y_values) in enumerate(_edge_coordinates):
+            _representative_weight = (_bin + 0.5) / _edge_bins_2d
+            _traces.append(
+                _go_2d.Scatter(
+                    x=np.asarray(_x_values, dtype=np.float32),
+                    y=np.asarray(_y_values, dtype=np.float32),
+                    mode="lines",
+                    line={
+                        "color": "rgba(0, 0, 0, 0.45)",
+                        "width": _edge_scale_2d * _representative_weight,
+                    },
+                    hoverinfo="skip",
+                    visible=bool(_x_values),
+                    showlegend=False,
+                )
+            )
+
+        _traces.extend(
+            [
+                _go_2d.Scatter(
+                    x=_keys[:, 0],
+                    y=_keys[:, 1],
+                    mode="markers",
+                    name="Kx",
+                    text=[
+                        f"Key token {_i + 1}"
+                        for _i in range(Attn2d.num_tokens)
+                    ],
+                    hovertemplate="%{text}<br>(%{x:.3f}, %{y:.3f})<extra></extra>",
+                    marker={
+                        "size": 10,
+                        "color": "#a8deb5",
+                        "line": {"color": "black", "width": 1},
+                    },
+                ),
+                _go_2d.Scatter(
+                    x=_queries[:, 0],
+                    y=_queries[:, 1],
+                    mode="markers",
+                    name="Qx",
+                    text=[
+                        f"Query token {_i + 1}"
+                        for _i in range(Attn2d.num_tokens)
+                    ],
+                    hovertemplate="%{text}<br>(%{x:.3f}, %{y:.3f})<extra></extra>",
+                    marker={
+                        "size": 10,
+                        "color": "#d91c72",
+                        "line": {"color": "black", "width": 1},
+                    },
+                ),
+            ]
+        )
+
+        _points = np.vstack([_keys, _queries])
+        _x_center = float((_points[:, 0].min() + _points[:, 0].max()) / 2)
+        _y_center = float((_points[:, 1].min() + _points[:, 1].max()) / 2)
+        _span = max(
+            float(np.ptp(_points[:, 0])),
+            float(np.ptp(_points[:, 1])),
+            1e-6,
+        )
+        _half_span = 0.6 * _span
+        return (
+            _traces,
+            [_x_center - _half_span, _x_center + _half_span],
+            [_y_center - _half_span, _y_center + _half_span],
+        )
+
+    _frame_content_2d = [
+        _connection_frame_2d(int(_simulation_index_2d))
+        for _simulation_index_2d in _frame_indices_2d
+    ]
+    _trace_indices_2d = list(range(len(_frame_content_2d[0][0])))
+    _frames_2d = [
+        _go_2d.Frame(
+            name=str(_index_2d),
+            data=_frame_content_2d[_index_2d][0],
+            traces=_trace_indices_2d,
+            layout=_go_2d.Layout(
+                title_text=f"2D Key/Query Attention at t={_times_2d[_index_2d]:.2f}",
+                xaxis={"range": _frame_content_2d[_index_2d][1]},
+                yaxis={"range": _frame_content_2d[_index_2d][2]},
+            ),
+        )
+        for _index_2d in range(len(_frame_indices_2d))
+    ]
+    _slider_steps_2d = [
+        {
+            "method": "animate",
+            "args": [
+                [str(_index_2d)],
+                {
+                    "mode": "immediate",
+                    "frame": {"duration": 0, "redraw": True},
+                    "transition": {"duration": 0},
+                },
+            ],
+            "label": f"{_time_2d:.2f}",
+        }
+        for _index_2d, _time_2d in enumerate(_times_2d)
+    ]
+    _final_traces_2d, _final_x_range_2d, _final_y_range_2d = _frame_content_2d[
+        _last_frame_2d
+    ]
+    _two_d_attention_figure = _go_2d.Figure(
+        data=_final_traces_2d,
+        frames=_frames_2d,
+    )
+    _two_d_attention_figure.update_layout(
+        title=f"2D Key/Query Attention at t={_times_2d[_last_frame_2d]:.2f}",
+        height=800,
+        margin={"l": 55, "r": 30, "t": 90, "b": 110},
+        plot_bgcolor="white",
+        xaxis={
+            "range": _final_x_range_2d,
+            "showticklabels": False,
+            "ticks": "",
+            "showgrid": False,
+            "zeroline": False,
+            "constrain": "domain",
+        },
+        yaxis={
+            "range": _final_y_range_2d,
+            "showticklabels": False,
+            "ticks": "",
+            "showgrid": False,
+            "zeroline": False,
+            "constrain": "domain",
+            "scaleanchor": "x",
+            "scaleratio": 1,
+        },
+        legend={"orientation": "h", "x": 0.5, "xanchor": "center", "y": 1.04},
+        sliders=[
+            {
+                "active": _last_frame_2d,
+                "currentvalue": {"prefix": "Time: "},
+                "pad": {"t": 45},
+                "steps": _slider_steps_2d,
+            }
+        ],
+    )
+    two_d_attention_plot = mo.ui.plotly(
+        _two_d_attention_figure,
+        config={"responsive": True, "displaylogo": False},
+    )
+    mo.vstack([num_tokens_2d_input, two_d_attention_plot], gap=1.0)
+    return (Attn2d,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    There are som really interesting phenomenon happening above.
+    1. The phenomenon demonstrated in the paper doesn't always happen. Sometimes the $Kx_i$ and $Qx_i$ don't form two seperate clusters, but lie on parallel affine spaces, sometimes intersecting. I wonder why that is.
+    2. The attention matrix doens't always stay low-rank. After the $Kx_i$ converge to almost the same point in space, their dot products with any given $Qx_i$ are almost identical, causing the attention matrix to loose its binary property. This phenomenon is visible also in the attention matrix visualization, where we can see that after a while, multiple columns appear to look the same.
+    """)
+    return
+
+
+@app.cell
+def _():
+    return
 
 
 if __name__ == "__main__":
