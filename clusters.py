@@ -834,7 +834,6 @@ def convex_token_control(mo):
         debounce=True,
         label="N (tokens)",
     )
-    N
     return (N,)
 
 
@@ -854,7 +853,7 @@ def _(Attention, N, torch):
 
 
 @app.cell
-def _(convexClustering, mo, np):
+def _(N, convexClustering, mo, np):
     import plotly.graph_objects as _go_convex
 
     _convex_z = convexClustering.Z.detach().cpu().numpy()
@@ -961,7 +960,7 @@ def _(convexClustering, mo, np):
         _convex_figure,
         config={"responsive": True, "displaylogo": False},
     )
-    convex_z_plot
+    mo.vstack([N, convex_z_plot], gap=1.0)
     return
 
 
