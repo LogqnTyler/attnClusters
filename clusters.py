@@ -16,7 +16,7 @@ def _():
     return mo, np, softmax, torch
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(np, softmax, torch):
     class Attn_1D:
         def __init__(
@@ -97,7 +97,7 @@ def _(np, softmax, torch):
     return (Attn_1D,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     num_tokens_input = mo.ui.number(
         start=2,
@@ -147,7 +147,16 @@ def _(mo):
     return attention_controls, k_input, num_tokens_input, q_input, v_input
 
 
-@app.cell
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Section 2
+    We will illustrate some of the findings of the clusters paper (GLPR 23), starting with THM 2.1. THM 2.1 states that for Q, K, and V scalars in 1-d, the attention matrix converges exponentially to a low-rank matrix.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _(attention_controls, attention_plot, mo):
     mo.vstack(
         [attention_controls, attention_plot],
@@ -169,7 +178,7 @@ def _():
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(np, softmax, torch):
     class Attention:
         def __init__(
@@ -297,25 +306,6 @@ def _(torch):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Section 2
-    We will illustrate some of the findings of the clusters paper (GLPR 23), starting with THM 2.1. THM 2.1 states that for Q, K, and V scalars in 1-d, the attention matrix converges exponentially to a low-rank matrix.
-    """)
-    return
-
-
-@app.cell
-def _():
-    return
-
-
-@app.cell
-def _():
-    return
-
-
-@app.cell(hide_code=True)
 def _(Attn_1D, k_input, mo, np, num_tokens_input, q_input, torch, v_input):
     import plotly.graph_objects as _go_sim
 
@@ -434,7 +424,7 @@ def _(Attn_1D, k_input, mo, np, num_tokens_input, q_input, torch, v_input):
     return (attention_plot,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(Attn2d, mo, np, torch):
     import plotly.graph_objects as _go_2d_matrix
 
@@ -575,7 +565,7 @@ def _(mo):
     return (num_tokens_2d_input,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(Attention, mo, np, num_tokens_2d_input, torch):
     import plotly.graph_objects as _go_2d
 
@@ -817,10 +807,161 @@ def _(Attention, mo, np, num_tokens_2d_input, torch):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    There are som really interesting phenomenon happening above.
-    1. The phenomenon demonstrated in the paper doesn't always happen. Sometimes the $Kx_i$ and $Qx_i$ don't form two seperate clusters, but lie on parallel affine spaces, sometimes intersecting. I wonder why that is.
-    2. The attention matrix doens't always stay low-rank. After the $Kx_i$ converge to almost the same point in space, their dot products with any given $Qx_i$ are almost identical, causing the attention matrix to loose its binary property. This phenomenon is visible also in the attention matrix visualization, where we can see that after a while, multiple columns appear to look the same.
+    There are some really interesting phenomenon happening above.
+    1. The phenomenon demonstrated in the paper doesn't always happen. Sometimes ($n = 24$) the $Kx_i$ and $Qx_i$ don't form two seperate clusters, but lie on parallel affine spaces, sometimes intersecting. I wonder why that is.
+    2. The attention matrix doens't always stay low-rank. After the $Kx_i$ converge to almost the same point in space, their dot products with any given $Qx_i$ are almost identical, causing the attention matrix to loose its binary property. This phenomenon is visible also in the attention matrix visualization, where we can see that after a while, multiple columns appear to look the same. I wonder how the paper's proof could account for this artifact. This is also possibly a result of float imprecision.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Section 3: Clustering Toward Boundary of Convex Polytope
+
+    Theorem 3.1: If $V = I_d, Q^T K \succ 0,$ then for any initial ${z_i(0)}_n \subset R$, there exists a convex polytope $\cal{K} \subset R$ such that ${z_i(t)}_n \rightarrow \partial \cal(K)$ as $t \rightarrow \infty.$
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def convex_token_control(mo):
+    N = mo.ui.number(
+        start=2,
+        stop=100,
+        step=1,
+        value=20,
+        debounce=True,
+        label="N (tokens)",
+    )
+    N
+    return (N,)
+
+
+@app.cell
+def _(Attention, N, torch):
+    # A = torch.rand((3, 3), dtype=torch.float64) * 2 - 1
+    A = torch.eye(3, dtype=torch.float64)
+    X = torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - torch.tensor(
+        [5, 5, 5]
+    ).reshape(3, 1)
+    convexClustering = Attention(
+        K=A, Q=A.T, V=torch.eye(3, dtype=torch.float64), X=X, T=10
+    )
+
+    convexClustering.rescaled_dynamics()
+    return (convexClustering,)
+
+
+@app.cell
+def _(convexClustering, mo, np):
+    import plotly.graph_objects as _go_convex
+
+    _convex_z = convexClustering.Z.detach().cpu().numpy()
+    _convex_finite_steps = np.isfinite(_convex_z).all(axis=(1, 2))
+    _convex_valid_count = (
+        int(np.argmax(~_convex_finite_steps))
+        if not _convex_finite_steps.all()
+        else convexClustering.num_steps
+    )
+    _convex_frame_indices = np.unique(
+        np.linspace(
+            0,
+            _convex_valid_count - 1,
+            min(_convex_valid_count, 201),
+            dtype=int,
+        )
+    )
+    _convex_times = _convex_frame_indices * convexClustering.dt
+    _convex_token_ids = np.arange(1, convexClustering.num_tokens + 1)
+    _convex_values = _convex_z[_convex_frame_indices]
+    _convex_ranges = []
+    for _convex_dimension in range(3):
+        _convex_min = float(_convex_values[:, _convex_dimension, :].min())
+        _convex_max = float(_convex_values[:, _convex_dimension, :].max())
+        _convex_pad = max(0.05 * (_convex_max - _convex_min), 1e-3)
+        _convex_ranges.append(
+            [_convex_min - _convex_pad, _convex_max + _convex_pad]
+        )
+
+    def _convex_scatter(_convex_step):
+        _convex_points = _convex_z[_convex_step]
+        return _go_convex.Scatter3d(
+            x=_convex_points[0],
+            y=_convex_points[1],
+            z=_convex_points[2],
+            mode="markers",
+            text=[f"Token {_convex_id}" for _convex_id in _convex_token_ids],
+            customdata=_convex_token_ids,
+            marker={
+                "size": 7,
+                "color": _convex_token_ids,
+                "colorscale": "Turbo",
+                "cmin": 1,
+                "cmax": convexClustering.num_tokens,
+                "line": {"color": "white", "width": 0.5},
+            },
+            hovertemplate=(
+                "%{text}<br>Z₁=%{x:.4f}<br>Z₂=%{y:.4f}<br>Z₃=%{z:.4f}"
+                "<extra></extra>"
+            ),
+            showlegend=False,
+        )
+
+    _convex_frames = [
+        _go_convex.Frame(
+            name=str(_convex_position),
+            data=[_convex_scatter(int(_convex_step))],
+            traces=[0],
+            layout=_go_convex.Layout(
+                title_text=f"convexClustering: Z dynamics at t={_convex_times[_convex_position]:.2f}"
+            ),
+        )
+        for _convex_position, _convex_step in enumerate(_convex_frame_indices)
+    ]
+    _convex_slider_steps = [
+        {
+            "method": "animate",
+            "args": [
+                [str(_convex_position)],
+                {
+                    "mode": "immediate",
+                    "frame": {"duration": 0, "redraw": True},
+                    "transition": {"duration": 0},
+                },
+            ],
+            "label": f"{_convex_time:.2f}",
+        }
+        for _convex_position, _convex_time in enumerate(_convex_times)
+    ]
+    _convex_figure = _go_convex.Figure(
+        data=[_convex_scatter(int(_convex_frame_indices[0]))],
+        frames=_convex_frames,
+    )
+    _convex_figure.update_layout(
+        title=f"convexClustering: Z dynamics at t={_convex_times[0]:.2f}",
+        height=760,
+        margin={"l": 0, "r": 0, "t": 80, "b": 100},
+        scene={
+            "xaxis": {"title": "Z₁", "range": _convex_ranges[0]},
+            "yaxis": {"title": "Z₂", "range": _convex_ranges[1]},
+            "zaxis": {"title": "Z₃", "range": _convex_ranges[2]},
+            "aspectmode": "cube",
+        },
+        sliders=[
+            {
+                "active": 0,
+                "currentvalue": {"prefix": "Time: "},
+                "pad": {"t": 55},
+                "steps": _convex_slider_steps,
+            }
+        ],
+    )
+    convex_z_plot = mo.ui.plotly(
+        _convex_figure,
+        config={"responsive": True, "displaylogo": False},
+    )
+    convex_z_plot
     return
 
 
