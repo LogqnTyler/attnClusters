@@ -13,7 +13,7 @@ def _():
     from torch.linalg import matrix_rank
     import plotly.express as px
 
-    return mo, np, softmax, torch
+    return matrix_rank, mo, np, softmax, torch
 
 
 @app.cell(hide_code=True)
@@ -304,7 +304,7 @@ def _(np, softmax, torch):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
- 
+
     """)
     return
 
@@ -1230,25 +1230,103 @@ def _(mo):
 
 @app.cell
 def non_psd_cluster_simulation(Attention, N, torch):
-    convexClusteringNotPSD = Attention(
-        K=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
-        Q=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
+    B = torch.rand((3, 3), dtype=torch.float64) * 2 - 1
+
+    convexClusteringPSD = Attention(
+        K=B,
+        Q=B.T,
         V=torch.eye(3, dtype=torch.float64),
         X=torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5,
         T=10,
     )
-    convexClusteringNotPSD.rescaled_dynamics()
-    return (convexClusteringNotPSD,)
+    convexClusteringPSD.rescaled_dynamics()
+    return (convexClusteringPSD,)
 
 
 @app.cell(hide_code=True)
-def non_psd_cluster_plot(N, convexClusteringNotPSD, make_convex_z_plot, mo):
-    non_psd_convex_z_plot = make_convex_z_plot(
-        convexClusteringNotPSD,
-        "Non-PSD Q^T K Cluster Dynamics",
-        "non-psd-convex-z-camera",
+def non_psd_cluster_plot(N, convexClusteringPSD, make_convex_z_plot, mo):
+    psd_convex_z_plot = make_convex_z_plot(
+        convexClusteringPSD,
+        "PSD Q^T K Cluster Dynamics",
+        "psd-convex-z-camera",
     )
-    mo.vstack([N, non_psd_convex_z_plot], gap=1.0)
+    mo.vstack([N, psd_convex_z_plot], gap=1.0)
+    return
+
+
+@app.cell
+def _(convexClusteringPSD, matrix_rank):
+    matrix_rank(convexClusteringPSD.P[-1])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    As one can see, the attention matrix approaches a rank equal to the number of leaders/vetices of the polytope. We still frequently have degenerate polyhedra with only two vertices. Below is a plot of the distribution of the number of vertices at $n = 5, 10, 50, 100$.
+    """)
+    return
+
+
+@app.cell
+def rank_histograms(Attention, matrix_rank, np, torch):
+    import matplotlib.pyplot as _plt_rank
+
+    _rank_token_counts = [5, 10, 50, 100]
+    _rank_histories = []
+    trials = 500
+
+    for _rank_n in _rank_token_counts:
+        _ranks = torch.empty(trials, dtype=torch.int64)
+        for _rank_trial in range(trials):
+            _rank_B = torch.rand((3, 3), dtype=torch.float64) * 2 - 1
+            _rank_cluster = Attention(
+                K=_rank_B,
+                Q=_rank_B.T,
+                V=torch.eye(3, dtype=torch.float64),
+                X=torch.rand((3, _rank_n), dtype=torch.float64) * 10 - 5,
+                T=10,
+            )
+            _rank_cluster.rescaled_dynamics()
+            _ranks[_rank_trial] = matrix_rank(_rank_cluster.P[-1])
+        _rank_histories.append(_ranks)
+
+    _rank_max = max(int(_ranks.max()) for _ranks in _rank_histories)
+    _rank_bins = np.arange(0.5, _rank_max + 1.5, 1)
+    _rank_tick_step = max(1, int(np.ceil(_rank_max / 10)))
+    rank_histogram_figure, _rank_axes = _plt_rank.subplots(
+        2,
+        2,
+        figsize=(11, 8),
+        sharex=True,
+        sharey=True,
+    )
+
+    for _rank_axis, _rank_n, _ranks in zip(
+        _rank_axes.flat,
+        _rank_token_counts,
+        _rank_histories,
+    ):
+        _rank_axis.hist(
+            _ranks.numpy(),
+            bins=_rank_bins,
+            color="#6f83d6",
+            edgecolor="white",
+            linewidth=0.8,
+            rwidth=0.9,
+        )
+        _rank_axis.set_title(f"N = {_rank_n}")
+        _rank_axis.set_xlabel("Final attention rank")
+        _rank_axis.set_ylabel("Frequency")
+        _rank_axis.set_xticks(np.arange(1, _rank_max + 1, _rank_tick_step))
+        _rank_axis.grid(axis="y", alpha=0.2)
+
+    rank_histogram_figure.suptitle(
+        "Distribution of Final Attention-Matrix Rank",
+        fontsize=15,
+    )
+    rank_histogram_figure.tight_layout()
+    rank_histogram_figure
     return
 
 
@@ -1256,6 +1334,8 @@ def non_psd_cluster_plot(N, convexClusteringNotPSD, make_convex_z_plot, mo):
 def _(mo):
     mo.md(r"""
     # Section 4
+
+    The paper considers a more general case than $V = \lambda I_d$,
     """)
     return
 
