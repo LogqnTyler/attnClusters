@@ -324,7 +324,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='gbvW-0' random-id='4ad98d43-79c5-f484-e5a2-cbd13b8ec348'><marimo-anywidget data-initial-value='{&quot;model_id&quot;:&quot;bbf9927d2f1b410284da5b07b52eb22b&quot;}' data-label='null' data-model-id='&quot;bbf9927d2f1b410284da5b07b52eb22b&quot;'></marimo-anywidget></marimo-ui-element>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 1.0rem'><marimo-ui-element object-id='qnkX-0' random-id='061900c3-7333-ee77-0b94-ab2cb383822e'><marimo-number data-initial-value='80' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eN (tokens)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='2' data-stop='100' data-step='1' data-debounce='true' data-full-width='false' data-disabled='false'></marimo-number></marimo-ui-element><marimo-ui-element object-id='gbvW-0' random-id='868cfe43-485f-3fa5-3f52-4650f26992c6'><marimo-anywidget data-initial-value='{&quot;model_id&quot;:&quot;60c72d4b38304c79a2794262b6aa4595&quot;}' data-label='null' data-model-id='&quot;60c72d4b38304c79a2794262b6aa4595&quot;'></marimo-anywidget></marimo-ui-element></div>"
           }
         }
       ],

@@ -1242,13 +1242,13 @@ def non_psd_cluster_simulation(Attention, N, torch):
 
 
 @app.cell(hide_code=True)
-def non_psd_cluster_plot(convexClusteringNotPSD, make_convex_z_plot):
+def non_psd_cluster_plot(N, convexClusteringNotPSD, make_convex_z_plot, mo):
     non_psd_convex_z_plot = make_convex_z_plot(
         convexClusteringNotPSD,
         "Non-PSD Q^T K Cluster Dynamics",
         "non-psd-convex-z-camera",
     )
-    non_psd_convex_z_plot
+    mo.vstack([N, non_psd_convex_z_plot], gap=1.0)
     return
 
 
