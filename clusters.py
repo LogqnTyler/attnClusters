@@ -17,6 +17,19 @@ def _():
 
 
 @app.cell(hide_code=True)
+def full_height_outputs(mo):
+    mo.Html(r"""
+    <style>
+    .console-output-area {
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    </style>
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _(np, softmax, torch):
     class Attn_1D:
         def __init__(
@@ -830,7 +843,7 @@ def convex_token_control(mo):
         start=2,
         stop=100,
         step=1,
-        value=20,
+        value=80,
         debounce=True,
         label="N (tokens)",
     )
@@ -839,133 +852,411 @@ def convex_token_control(mo):
 
 @app.cell
 def _(Attention, N, torch):
-    # A = torch.rand((3, 3), dtype=torch.float64) * 2 - 1
     A = torch.eye(3, dtype=torch.float64)
-    X = torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - torch.tensor(
-        [5, 5, 5]
-    ).reshape(3, 1)
+    X = torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5
+    X_offset = X + 5
+
     convexClustering = Attention(
-        K=A, Q=A.T, V=torch.eye(3, dtype=torch.float64), X=X, T=10
+        K=A,
+        Q=A.T,
+        V=torch.eye(3, dtype=torch.float64),
+        X=X,
+        T=10,
+    )
+    OffsetConvCluster = Attention(
+        K=A,
+        Q=A.T,
+        V=torch.eye(3, dtype=torch.float64),
+        X=X_offset,
+        T=10,
+    )
+    lambdaVConvCluster = Attention(
+        K=A,
+        Q=A.T,
+        V=torch.eye(3, dtype=torch.float64) * 5,
+        X=X,
+        T=10,
     )
 
     convexClustering.rescaled_dynamics()
-    return (convexClustering,)
+    OffsetConvCluster.rescaled_dynamics()
+    lambdaVConvCluster.rescaled_dynamics()
+    return OffsetConvCluster, convexClustering, lambdaVConvCluster
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(N, convexClustering, mo, np):
+    import anywidget as _anywidget
+    import json as _json
     import plotly.graph_objects as _go_convex
+    import traitlets as _traitlets
+    from scipy.spatial import ConvexHull as _ConvexHull
+    from scipy.spatial import QhullError as _QhullError
 
-    _convex_z = convexClustering.Z.detach().cpu().numpy()
-    _convex_finite_steps = np.isfinite(_convex_z).all(axis=(1, 2))
-    _convex_valid_count = (
-        int(np.argmax(~_convex_finite_steps))
-        if not _convex_finite_steps.all()
-        else convexClustering.num_steps
-    )
-    _convex_frame_indices = np.unique(
-        np.linspace(
-            0,
-            _convex_valid_count - 1,
-            min(_convex_valid_count, 201),
-            dtype=int,
-        )
-    )
-    _convex_times = _convex_frame_indices * convexClustering.dt
-    _convex_token_ids = np.arange(1, convexClustering.num_tokens + 1)
-    _convex_values = _convex_z[_convex_frame_indices]
-    _convex_ranges = []
-    for _convex_dimension in range(3):
-        _convex_min = float(_convex_values[:, _convex_dimension, :].min())
-        _convex_max = float(_convex_values[:, _convex_dimension, :].max())
-        _convex_pad = max(0.05 * (_convex_max - _convex_min), 1e-3)
-        _convex_ranges.append(
-            [_convex_min - _convex_pad, _convex_max + _convex_pad]
-        )
+    class _PersistentPlotly3D(_anywidget.AnyWidget):
+        figure = _traitlets.Dict().tag(sync=True)
+        times = _traitlets.List(_traitlets.Float()).tag(sync=True)
 
-    def _convex_scatter(_convex_step):
-        _convex_points = _convex_z[_convex_step]
-        return _go_convex.Scatter3d(
-            x=_convex_points[0],
-            y=_convex_points[1],
-            z=_convex_points[2],
-            mode="markers",
-            text=[f"Token {_convex_id}" for _convex_id in _convex_token_ids],
-            customdata=_convex_token_ids,
-            marker={
-                "size": 7,
-                "color": _convex_token_ids,
-                "colorscale": "Turbo",
-                "cmin": 1,
-                "cmax": convexClustering.num_tokens,
-                "line": {"color": "white", "width": 0.5},
-            },
-            hovertemplate=(
-                "%{text}<br>Z₁=%{x:.4f}<br>Z₂=%{y:.4f}<br>Z₃=%{z:.4f}"
-                "<extra></extra>"
-            ),
-            showlegend=False,
-        )
+        _esm = r"""
+    import Plotly from "https://esm.sh/plotly.js-dist-min@4.1.1";
 
-    _convex_frames = [
-        _go_convex.Frame(
-            name=str(_convex_position),
-            data=[_convex_scatter(int(_convex_step))],
-            traces=[0],
-            layout=_go_convex.Layout(
-                title_text=f"convexClustering: Z dynamics at t={_convex_times[_convex_position]:.2f}"
-            ),
-        )
-        for _convex_position, _convex_step in enumerate(_convex_frame_indices)
-    ]
-    _convex_slider_steps = [
-        {
-            "method": "animate",
-            "args": [
-                [str(_convex_position)],
-                {
-                    "mode": "immediate",
-                    "frame": {"duration": 0, "redraw": True},
-                    "transition": {"duration": 0},
-                },
-            ],
-            "label": f"{_convex_time:.2f}",
+    function clone(value) {
+      return value == null ? null : structuredClone(value);
+    }
+
+    function cameraFromEvent(current, update) {
+      if (update?.["scene.camera"]) return clone(update["scene.camera"]);
+      if (update?.scene?.camera) return clone(update.scene.camera);
+
+      const next = clone(current) ?? {};
+      let changed = false;
+      for (const [key, value] of Object.entries(update ?? {})) {
+        if (!key.startsWith("scene.camera.")) continue;
+        const path = key.slice("scene.camera.".length).split(".");
+        let target = next;
+        for (const part of path.slice(0, -1)) {
+          target[part] ??= {};
+          target = target[part];
         }
-        for _convex_position, _convex_time in enumerate(_convex_times)
-    ]
-    _convex_figure = _go_convex.Figure(
-        data=[_convex_scatter(int(_convex_frame_indices[0]))],
-        frames=_convex_frames,
-    )
-    _convex_figure.update_layout(
-        title=f"convexClustering: Z dynamics at t={_convex_times[0]:.2f}",
-        height=760,
-        margin={"l": 0, "r": 0, "t": 80, "b": 100},
-        scene={
-            "xaxis": {"title": "Z₁", "range": _convex_ranges[0]},
-            "yaxis": {"title": "Z₂", "range": _convex_ranges[1]},
-            "zaxis": {"title": "Z₃", "range": _convex_ranges[2]},
-            "aspectmode": "cube",
-        },
-        sliders=[
-            {
-                "active": 0,
-                "currentvalue": {"prefix": "Time: "},
-                "pad": {"t": 55},
-                "steps": _convex_slider_steps,
+        target[path.at(-1)] = value;
+        changed = true;
+      }
+      return changed ? next : current;
+    }
+
+    async function render({ model, el }) {
+      const figure = model.get("figure");
+      const times = model.get("times");
+      const graph = document.createElement("div");
+      const controls = document.createElement("div");
+      const slider = document.createElement("input");
+      const timeLabel = document.createElement("span");
+      const controller = new AbortController();
+
+      el.style.cssText = "display:block;width:100%;";
+      graph.style.cssText = "width:100%;height:760px;";
+      controls.style.cssText = "display:flex;align-items:center;gap:12px;padding:4px 24px 14px;";
+      slider.type = "range";
+      slider.min = "0";
+      slider.max = String(Math.max(0, times.length - 1));
+      slider.step = "1";
+      slider.value = "0";
+      slider.style.cssText = "flex:1;accent-color:#7c9cff;cursor:pointer;";
+      timeLabel.style.cssText = "min-width:92px;font:12px ui-monospace,monospace;color:#666;";
+      timeLabel.textContent = `Time: ${(times[0] ?? 0).toFixed(2)}`;
+      controls.append(slider, timeLabel);
+      el.append(graph, controls);
+
+      await Plotly.newPlot(graph, figure.data, figure.layout, {
+        responsive: true,
+        displaylogo: false,
+      });
+
+      let camera = clone(graph._fullLayout?.scene?.camera);
+      let currentIndex = 0;
+      let requestedIndex = 0;
+      let applying = false;
+
+      graph.on("plotly_relayout", (update) => {
+        if (!applying) camera = cameraFromEvent(camera, update);
+      });
+
+      async function applyRequestedFrame() {
+        if (applying) return;
+        applying = true;
+        try {
+          while (currentIndex !== requestedIndex) {
+            const targetIndex = requestedIndex;
+            const savedCamera = clone(camera);
+            const traceIndices = [
+              currentIndex * 3,
+              currentIndex * 3 + 1,
+              currentIndex * 3 + 2,
+              targetIndex * 3,
+              targetIndex * 3 + 1,
+              targetIndex * 3 + 2,
+            ];
+            await Plotly.restyle(
+              graph,
+              { visible: [false, false, false, true, true, true] },
+              traceIndices,
+            );
+            if (savedCamera) {
+              await Plotly.relayout(graph, { "scene.camera": savedCamera });
+              camera = savedCamera;
             }
-        ],
+            currentIndex = targetIndex;
+          }
+        } finally {
+          applying = false;
+          if (currentIndex !== requestedIndex) applyRequestedFrame();
+        }
+      }
+
+      slider.addEventListener(
+        "input",
+        () => {
+          requestedIndex = Number(slider.value);
+          timeLabel.textContent = `Time: ${times[requestedIndex].toFixed(2)}`;
+          applyRequestedFrame();
+        },
+        { signal: controller.signal },
+      );
+
+      return () => {
+        controller.abort();
+        Plotly.purge(graph);
+      };
+    }
+
+    export default { render };
+    """
+
+    def make_convex_z_plot(_attention, _title, _camera_revision):
+        _convex_z = _attention.Z.detach().cpu().numpy()
+        _convex_finite_steps = np.isfinite(_convex_z).all(axis=(1, 2))
+        _convex_valid_count = (
+            int(np.argmax(~_convex_finite_steps))
+            if not _convex_finite_steps.all()
+            else _attention.num_steps
+        )
+        _convex_frame_indices = np.unique(
+            np.linspace(
+                0,
+                _convex_valid_count - 1,
+                min(_convex_valid_count, 201),
+                dtype=int,
+            )
+        )
+        _convex_times = _convex_frame_indices * _attention.dt
+        _convex_token_ids = np.arange(1, _attention.num_tokens + 1)
+        _convex_values = _convex_z[_convex_frame_indices]
+        _convex_ranges = []
+        for _convex_dimension in range(3):
+            _convex_min = float(_convex_values[:, _convex_dimension, :].min())
+            _convex_max = float(_convex_values[:, _convex_dimension, :].max())
+            _convex_pad = max(0.05 * (_convex_max - _convex_min), 1e-3)
+            _convex_ranges.append(
+                [_convex_min - _convex_pad, _convex_max + _convex_pad]
+            )
+
+        def _convex_hull_traces(_convex_step):
+            _convex_points = _convex_z[_convex_step].T
+            _convex_empty_mesh = _go_convex.Mesh3d(
+                x=[], y=[], z=[], hoverinfo="skip", showlegend=False
+            )
+            _convex_empty_edges = _go_convex.Scatter3d(
+                x=[],
+                y=[],
+                z=[],
+                mode="lines",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+            if len(_convex_points) < 4:
+                return _convex_empty_mesh, _convex_empty_edges
+            try:
+                _convex_hull = _ConvexHull(_convex_points, qhull_options="QJ")
+            except _QhullError:
+                return _convex_empty_mesh, _convex_empty_edges
+
+            _convex_i, _convex_j, _convex_k = _convex_hull.simplices.T
+            _convex_mesh = _go_convex.Mesh3d(
+                x=_convex_points[:, 0],
+                y=_convex_points[:, 1],
+                z=_convex_points[:, 2],
+                i=_convex_i,
+                j=_convex_j,
+                k=_convex_k,
+                color="#7c9cff",
+                opacity=0.20,
+                flatshading=True,
+                lighting={
+                    "ambient": 0.55,
+                    "diffuse": 0.85,
+                    "specular": 0.15,
+                    "roughness": 0.8,
+                    "fresnel": 0.1,
+                },
+                lightposition={"x": 100, "y": 200, "z": 300},
+                hoverinfo="skip",
+                showlegend=False,
+            )
+
+            _convex_edges = sorted(
+                {
+                    tuple(
+                        sorted(
+                            (_convex_face[_convex_a], _convex_face[_convex_b])
+                        )
+                    )
+                    for _convex_face in _convex_hull.simplices
+                    for _convex_a, _convex_b in ((0, 1), (1, 2), (2, 0))
+                }
+            )
+            _convex_edge_x, _convex_edge_y, _convex_edge_z = [], [], []
+            for _convex_start, _convex_end in _convex_edges:
+                _convex_edge_x.extend(
+                    [
+                        _convex_points[_convex_start, 0],
+                        _convex_points[_convex_end, 0],
+                        None,
+                    ]
+                )
+                _convex_edge_y.extend(
+                    [
+                        _convex_points[_convex_start, 1],
+                        _convex_points[_convex_end, 1],
+                        None,
+                    ]
+                )
+                _convex_edge_z.extend(
+                    [
+                        _convex_points[_convex_start, 2],
+                        _convex_points[_convex_end, 2],
+                        None,
+                    ]
+                )
+            _convex_edge_trace = _go_convex.Scatter3d(
+                x=_convex_edge_x,
+                y=_convex_edge_y,
+                z=_convex_edge_z,
+                mode="lines",
+                line={"color": "rgba(255, 166, 64, 0.42)", "width": 2},
+                hoverinfo="skip",
+                showlegend=False,
+            )
+            return _convex_mesh, _convex_edge_trace
+
+        def _convex_scatter(_convex_step):
+            _convex_points = _convex_z[_convex_step]
+            return _go_convex.Scatter3d(
+                x=_convex_points[0],
+                y=_convex_points[1],
+                z=_convex_points[2],
+                mode="markers",
+                text=[
+                    f"Token {_convex_id}" for _convex_id in _convex_token_ids
+                ],
+                customdata=_convex_token_ids,
+                marker={
+                    "size": 7,
+                    "color": _convex_token_ids,
+                    "colorscale": "Turbo",
+                    "cmin": 1,
+                    "cmax": _attention.num_tokens,
+                    "line": {"color": "white", "width": 0.5},
+                },
+                hovertemplate=(
+                    "%{text}<br>Z₁=%{x:.4f}<br>Z₂=%{y:.4f}<br>Z₃=%{z:.4f}"
+                    "<extra></extra>"
+                ),
+                showlegend=False,
+            )
+
+        _convex_plot_traces = []
+        for _convex_position, _convex_step in enumerate(_convex_frame_indices):
+            _convex_step_traces = [
+                *_convex_hull_traces(int(_convex_step)),
+                _convex_scatter(int(_convex_step)),
+            ]
+            _convex_is_visible = _convex_position == 0
+            for _convex_trace in _convex_step_traces:
+                _convex_trace.visible = _convex_is_visible
+            _convex_plot_traces.extend(_convex_step_traces)
+
+        _convex_figure = _go_convex.Figure(data=_convex_plot_traces)
+        _convex_figure.update_layout(
+            title=_title,
+            uirevision=_camera_revision,
+            height=760,
+            margin={"l": 0, "r": 0, "t": 80, "b": 100},
+            scene={
+                "uirevision": _camera_revision,
+                "xaxis": {"title": "Z₁", "range": _convex_ranges[0]},
+                "yaxis": {"title": "Z₂", "range": _convex_ranges[1]},
+                "zaxis": {"title": "Z₃", "range": _convex_ranges[2]},
+                "aspectmode": "cube",
+            },
+        )
+
+        return _PersistentPlotly3D(
+            figure=_json.loads(_convex_figure.to_json()),
+            times=_convex_times.tolist(),
+        )
+
+    convex_z_plot = make_convex_z_plot(
+        convexClustering,
+        "Centered Cluster Dynamics",
+        "centered-convex-z-camera",
     )
-    convex_z_plot = mo.ui.plotly(
-        _convex_figure,
-        config={"responsive": True, "displaylogo": False},
-    )
+
     mo.vstack([N, convex_z_plot], gap=1.0)
+    return (make_convex_z_plot,)
+
+
+@app.cell(hide_code=True)
+def _(OffsetConvCluster, make_convex_z_plot):
+    offset_convex_z_plot = make_convex_z_plot(
+        OffsetConvCluster,
+        "Offset Cluster Dynamics",
+        "offset-convex-z-camera",
+    )
+    offset_convex_z_plot
+    return
+
+
+@app.cell(hide_code=True)
+def lambda_v_cluster_plot(lambdaVConvCluster, make_convex_z_plot):
+    lambda_v_convex_z_plot = make_convex_z_plot(
+        lambdaVConvCluster,
+        "Lambda-V Cluster Dynamics",
+        "lambda-v-convex-z-camera",
+    )
+    lambda_v_convex_z_plot
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    This plot gives me some questions:
+    - How can we determine the leaders from a starting set of ${z_i(0)}$?
+    - What properties of our initial tokens determine what our leaders are? It is clear that the leaders are the tokens which do not change position significantly over the course of the dynamics (although they change a bit at the start), and they seem to be in some way the most "outward" of the tokens. I wonder if this can help us determine what the initial tokens will be. The offset (not zero centered) tokens clearly converge immediately to the most outward.
+    - How does the value of $\lambda$ affect the speed of convergence if $V = \lambda I_d$? Just a rough eyeball of increasing $\lambda$ from $1$ to $2$ seems to yeild a 4x increase in the convergence speed.
+    """)
     return
 
 
 @app.cell
-def _():
+def non_psd_cluster_simulation(Attention, N, torch):
+    convexClusteringNotPSD = Attention(
+        K=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
+        Q=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
+        V=torch.eye(3, dtype=torch.float64),
+        X=torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5,
+        T=10,
+    )
+    convexClusteringNotPSD.rescaled_dynamics()
+    return (convexClusteringNotPSD,)
+
+
+@app.cell(hide_code=True)
+def non_psd_cluster_plot(convexClusteringNotPSD, make_convex_z_plot):
+    non_psd_convex_z_plot = make_convex_z_plot(
+        convexClusteringNotPSD,
+        "Non-PSD Q^T K Cluster Dynamics",
+        "non-psd-convex-z-camera",
+    )
+    non_psd_convex_z_plot
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Section 4
+    """)
     return
 
 
