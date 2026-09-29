@@ -1349,7 +1349,8 @@ def _(mo):
 
     To put this more formally, the paper defines the $(V, Q, K)$ as a good triple if
 
-    1. $\lambda_1 > |\lambda_2| \geq \cdots \geq |\lambda_n|$
+    1. $\lambda_1 > |\lambda_2| \geq \cdots \geq |\lambda_n|$, $\lambda_i$ is an eigenvalue of $V$.
+    2. $\langle Qe_1, Ke_1 \rangle > 0$ for all $e_1 \in \ker(V - \lambda_1 I_d) \setminus \{0\}$.
     """)
     return
 

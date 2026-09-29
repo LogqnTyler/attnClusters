@@ -384,12 +384,12 @@
     },
     {
       "id": "DGlp",
-      "code_hash": "be4b00407ba39de5daef7faa6b33848a",
+      "code_hash": "6a9c6b69299c5114fa9bc614bcd8d19a",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"section-4\">Section 4</h1>\n<span class=\"paragraph\">The paper considers a more general case than the one considered above. If instead of assuming <marimo-tex class=\"arithmatex\">||(V = \\lambda I_d||)</marimo-tex>, we assume that <marimo-tex class=\"arithmatex\">||(V||)</marimo-tex> has a unique dominant, real, and positive eigenvalue <marimo-tex class=\"arithmatex\">||(\\lambda_1||)</marimo-tex>, and the quadratic <marimo-tex class=\"arithmatex\">||(\\langle Q\\cdot, K\\cdot \\rangle||)</marimo-tex> is positive on the eigenspace associated with <marimo-tex class=\"arithmatex\">||(\\lambda_1||)</marimo-tex>, then tokens converge to union of three (usually two) parallal hyperplanes.</span>\n<span class=\"paragraph\">To put this more formally, the paper defines the <marimo-tex class=\"arithmatex\">||((V, Q, K)||)</marimo-tex> as a good triple if</span>\n<ol>\n<li><marimo-tex class=\"arithmatex\">||(\\lambda_1 &gt; |\\lambda_2| \\geq \\cdots \\geq |\\lambda_n|||)</marimo-tex></li>\n</ol></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"section-4\">Section 4</h1>\n<span class=\"paragraph\">The paper considers a more general case than the one considered above. If instead of assuming <marimo-tex class=\"arithmatex\">||(V = \\lambda I_d||)</marimo-tex>, we assume that <marimo-tex class=\"arithmatex\">||(V||)</marimo-tex> has a unique dominant, real, and positive eigenvalue <marimo-tex class=\"arithmatex\">||(\\lambda_1||)</marimo-tex>, and the quadratic <marimo-tex class=\"arithmatex\">||(\\langle Q\\cdot, K\\cdot \\rangle||)</marimo-tex> is positive on the eigenspace associated with <marimo-tex class=\"arithmatex\">||(\\lambda_1||)</marimo-tex>, then tokens converge to union of three (usually two) parallal hyperplanes.</span>\n<span class=\"paragraph\">To put this more formally, the paper defines the <marimo-tex class=\"arithmatex\">||((V, Q, K)||)</marimo-tex> as a good triple if</span>\n<ol>\n<li><marimo-tex class=\"arithmatex\">||(\\lambda_1 &gt; |\\lambda_2| \\geq \\cdots \\geq |\\lambda_n|||)</marimo-tex>, <marimo-tex class=\"arithmatex\">||(\\lambda_i||)</marimo-tex> is an eigenvalue of <marimo-tex class=\"arithmatex\">||(V||)</marimo-tex>.</li>\n<li><marimo-tex class=\"arithmatex\">||(\\langle Qe_1, Ke_1 \\rangle &gt; 0||)</marimo-tex> for all <marimo-tex class=\"arithmatex\">||(e_1 \\in \\ker(V - \\lambda_1 I_d) \\setminus \\{0\\}||)</marimo-tex>.</li>\n</ol></span>"
           }
         }
       ],
