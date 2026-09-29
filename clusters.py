@@ -4,7 +4,17 @@ __generated_with = "0.24.2"
 app = marimo.App(width="medium")
 
 
-@app.cell
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # The Emergence of Clusters in Self-Attention Dynamics
+    ## Comments, Visualizations, and Notes
+    This notebook is a set of visualizations and explanations for the paper [the Emergence of Clusters in Self-Attention Dynamics](https://arxiv.org/abs/2305.05465) by Geshkovski et. all. The paper proves that under fixed (not time-dependent) weights, tokens cluster toward certain limiting shapes as time tends to infinity.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _():
     import marimo as mo
     import numpy as np
@@ -309,7 +319,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(torch):
     z = torch.rand(3, 10)
     z[:, 9] = torch.tensor([-10, -10, -10]) + torch.rand(3)
@@ -850,7 +860,7 @@ def convex_token_control(mo):
     return (N,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(Attention, N, torch):
     A = torch.eye(3, dtype=torch.float64)
     X = torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5
@@ -1228,7 +1238,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def non_psd_cluster_simulation(Attention, N, torch):
     B = torch.rand((3, 3), dtype=torch.float64) * 2 - 1
 
@@ -1263,12 +1273,12 @@ def _(convexClusteringPSD, matrix_rank):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    As one can see, the attention matrix approaches a rank equal to the number of leaders/vetices of the polytope. We still frequently have degenerate polyhedra with only two vertices. Below is a plot of the distribution of the number of vertices at $n = 5, 10, 50, 100$.
+    As one can see, the attention matrix approaches a rank equal to the number of leaders/vetices of the polytope. We still frequently have degenerate polyhedra with only two vertices. Below is a plot of the distribution of the number of vertices at $n = 5, 10, 50, 100$. Interestingly, rank = 2 is far and away the most common result of the dynamics, and $\Pr\!\left(\operatorname{rank}(P [-1]) = 2\right) \approx 0.55$. I wonder why this is, and if there is a way to formalize these results.
     """)
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def rank_histograms(Attention, matrix_rank, np, torch):
     import matplotlib.pyplot as _plt_rank
 
@@ -1335,8 +1345,17 @@ def _(mo):
     mo.md(r"""
     # Section 4
 
-    The paper considers a more general case than $V = \lambda I_d$,
+    The paper considers a more general case than the one considered above. If instead of assuming $V = \lambda I_d$, we assume that $V$ has a unique dominant, real, and positive eigenvalue $\lambda_1$, and the quadratic $\langle Q\cdot, K\cdot \rangle$ is positive on the eigenspace associated with $\lambda_1$, then tokens converge to union of three (usually two) parallal hyperplanes.
+
+    To put this more formally, the paper defines the $(V, Q, K)$ as a good triple if
+
+    1. $\lambda_1 > |\lambda_2| \geq \cdots \geq |\lambda_n|$
     """)
+    return
+
+
+@app.cell
+def _():
     return
 
 
