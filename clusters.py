@@ -314,7 +314,7 @@ def _(np, softmax, torch):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-
+ 
     """)
     return
 
@@ -1227,6 +1227,77 @@ def lambda_v_cluster_plot(lambdaVConvCluster, make_convex_z_plot):
     return
 
 
+@app.cell
+def identity_rank_histograms(Attention, matrix_rank, np, torch):
+    import matplotlib.pyplot as _plt_identity_rank
+
+    _identity_token_counts = [5, 10, 20, 50, 100, 200, 500, 1000]
+    _identity_rank_histories = []
+    _identity_trials = 500
+    _identity_matrix = torch.eye(3, dtype=torch.float64)
+
+    for _identity_n in _identity_token_counts:
+        _identity_ranks = torch.empty(_identity_trials, dtype=torch.int64)
+        for _identity_trial in range(_identity_trials):
+            _identity_cluster = Attention(
+                K=_identity_matrix,
+                Q=_identity_matrix,
+                V=_identity_matrix,
+                X=torch.rand((3, _identity_n), dtype=torch.float64) * 10 - 5,
+                T=10,
+            )
+            _identity_cluster.rescaled_dynamics()
+            _identity_ranks[_identity_trial] = matrix_rank(
+                _identity_cluster.P[-1]
+            )
+        _identity_rank_histories.append(_identity_ranks)
+
+    _identity_rank_max = max(
+        int(_identity_ranks.max())
+        for _identity_ranks in _identity_rank_histories
+    )
+    _identity_rank_bins = np.arange(0.5, _identity_rank_max + 1.5, 1)
+    _identity_tick_step = max(1, int(np.ceil(_identity_rank_max / 10)))
+    identity_rank_histogram_figure, _identity_axes = (
+        _plt_identity_rank.subplots(
+            4,
+            2,
+            figsize=(12, 14),
+            sharex=True,
+            sharey=True,
+        )
+    )
+
+    for _identity_axis, _identity_n, _identity_ranks in zip(
+        _identity_axes.flat,
+        _identity_token_counts,
+        _identity_rank_histories,
+    ):
+        _identity_axis.hist(
+            _identity_ranks.numpy(),
+            bins=_identity_rank_bins,
+            color="#4f9d69",
+            edgecolor="white",
+            linewidth=0.8,
+            rwidth=0.9,
+        )
+        _identity_axis.set_title(f"N = {_identity_n}")
+        _identity_axis.set_xlabel("Final attention rank")
+        _identity_axis.set_ylabel("Frequency")
+        _identity_axis.set_xticks(
+            np.arange(1, _identity_rank_max + 1, _identity_tick_step)
+        )
+        _identity_axis.grid(axis="y", alpha=0.2)
+
+    identity_rank_histogram_figure.suptitle(
+        "Q = K = V = I₃: Distribution of Final Attention Rank",
+        fontsize=15,
+    )
+    identity_rank_histogram_figure.tight_layout()
+    identity_rank_histogram_figure
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -1340,6 +1411,97 @@ def rank_histograms(Attention, matrix_rank, np, torch):
     return
 
 
+@app.cell
+def _(Attention, N, torch):
+    convexClusteringNonPSD = Attention(
+        K=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
+        Q=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
+        V=torch.eye(3, dtype=torch.float64),
+        X=torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5,
+        T=10,
+    )
+    convexClusteringNonPSD.rescaled_dynamics()
+    return (convexClusteringNonPSD,)
+
+
+@app.cell(hide_code=True)
+def non_psd_cluster_plot(N, convexClusteringNonPSD, make_convex_z_plot, mo):
+    non_psd_convex_z_plot = make_convex_z_plot(
+        convexClusteringNonPSD,
+        "Non-PSD Q^T K Cluster Dynamics",
+        "non-psd-convex-z-camera",
+    )
+    mo.vstack([N, non_psd_convex_z_plot], gap=1.0)
+    return
+
+
+@app.cell
+def non_psd_rank_histograms(Attention, matrix_rank, np, torch):
+    import matplotlib.pyplot as _plt_non_psd_rank
+
+    _non_psd_token_counts = [5, 10, 50, 100]
+    _non_psd_rank_histories = []
+    _non_psd_trials = 500
+
+    for _non_psd_n in _non_psd_token_counts:
+        _non_psd_ranks = torch.empty(_non_psd_trials, dtype=torch.int64)
+        for _non_psd_trial in range(_non_psd_trials):
+            _non_psd_cluster = Attention(
+                K=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
+                Q=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
+                V=torch.eye(3, dtype=torch.float64),
+                X=torch.rand((3, _non_psd_n), dtype=torch.float64) * 10 - 5,
+                T=10,
+            )
+            _non_psd_cluster.rescaled_dynamics()
+            _non_psd_ranks[_non_psd_trial] = matrix_rank(
+                _non_psd_cluster.P[-1]
+            )
+        _non_psd_rank_histories.append(_non_psd_ranks)
+
+    _non_psd_rank_max = max(
+        int(_non_psd_ranks.max()) for _non_psd_ranks in _non_psd_rank_histories
+    )
+    _non_psd_rank_bins = np.arange(0.5, _non_psd_rank_max + 1.5, 1)
+    _non_psd_tick_step = max(1, int(np.ceil(_non_psd_rank_max / 10)))
+    non_psd_rank_histogram_figure, _non_psd_axes = _plt_non_psd_rank.subplots(
+        2,
+        2,
+        figsize=(11, 8),
+        sharex=True,
+        sharey=True,
+    )
+
+    for _non_psd_axis, _non_psd_n, _non_psd_ranks in zip(
+        _non_psd_axes.flat,
+        _non_psd_token_counts,
+        _non_psd_rank_histories,
+    ):
+        _non_psd_axis.hist(
+            _non_psd_ranks.numpy(),
+            bins=_non_psd_rank_bins,
+            color="#d97941",
+            edgecolor="white",
+            linewidth=0.8,
+            rwidth=0.9,
+        )
+        _non_psd_axis.set_title(f"N = {_non_psd_n}")
+        _non_psd_axis.set_xlabel("Final attention rank")
+        _non_psd_axis.set_ylabel("Frequency")
+        _non_psd_axis.set_xticks(
+            np.arange(1, _non_psd_rank_max + 1, _non_psd_tick_step)
+        )
+        _non_psd_axis.grid(axis="y", alpha=0.2)
+
+    non_psd_rank_histogram_figure.suptitle(
+        "Non-PSD Attention: Distribution of Final Matrix Rank",
+        fontsize=15,
+    )
+    non_psd_rank_histogram_figure.tight_layout()
+    non_psd_rank_histogram_figure
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -1352,11 +1514,6 @@ def _(mo):
     1. $\lambda_1 > |\lambda_2| \geq \cdots \geq |\lambda_n|$, $\lambda_i$ is an eigenvalue of $V$.
     2. $\langle Qe_1, Ke_1 \rangle > 0$ for all $e_1 \in \ker(V - \lambda_1 I_d) \setminus \{0\}$.
     """)
-    return
-
-
-@app.cell
-def _():
     return
 
 
