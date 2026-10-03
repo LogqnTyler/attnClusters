@@ -18,12 +18,21 @@ def _(mo):
 def _():
     import marimo as mo
     import numpy as np
-    import torch
-    from torch.nn.functional import softmax
-    from torch.linalg import matrix_rank
     import plotly.express as px
+    import torch
+    from attention import Attention, Attn_1D, ForgetfulAttention, device
+    from torch.linalg import matrix_rank
 
-    return matrix_rank, mo, np, softmax, torch
+    return (
+        Attention,
+        Attn_1D,
+        ForgetfulAttention,
+        device,
+        matrix_rank,
+        mo,
+        np,
+        torch,
+    )
 
 
 @app.cell(hide_code=True)
@@ -37,87 +46,6 @@ def full_height_outputs(mo):
     </style>
     """)
     return
-
-
-@app.cell(hide_code=True)
-def _(np, softmax, torch):
-    class Attn_1D:
-        def __init__(
-            self,
-            K: np.ndarray | torch.Tensor | float,
-            Q: np.ndarray | torch.Tensor | float,
-            V: np.ndarray | torch.Tensor | float,
-            X: np.ndarray
-            | torch.Tensor
-            | list[float],  # shape: token_dimension x num_tokens
-            T=6,
-            dt=0.05,
-        ) -> None:
-
-            if isinstance(K, (int, float)):
-                K = torch.tensor(K)
-            if isinstance(Q, (int, float)):
-                Q = torch.tensor(Q)
-            if isinstance(V, (int, float)):
-                V = torch.tensor(V)
-            if isinstance(X, list):
-                X = torch.tensor(X)
-
-            assert X.ndim == 1, "X should be a vector in R^(num_tokens)."
-            assert V.ndim == 0, "V should be a scalar."
-
-            assert K.ndim == 0, "K should be a scalar."
-            assert Q.ndim == 0, "Q should be a scalar."
-
-            assert T > 0, "Total time T must be greater than 0."
-            assert dt > 0, "Timestep dt must be greater than 0."
-            self.K = K
-            self.Q = Q
-            self.V = V
-            self.X_init = X
-            self.num_tokens = X.shape[0]
-            self.token_dim = 1
-            self.T = T
-            self.dt = dt
-            self.num_steps = int(T / dt) + 1
-
-            self.X = torch.zeros(
-                (self.num_steps, self.num_tokens),
-                dtype=torch.float64,
-            )
-            self.dX = torch.zeros(
-                (self.num_steps, self.num_tokens), dtype=torch.float64
-            )
-
-            self.P = torch.zeros(
-                self.num_steps,
-                self.num_tokens,
-                self.num_tokens,
-                dtype=torch.float64,
-            )
-
-            # initialize X(0)
-            self.X[0] = self.X_init
-            # Initialize P(0)
-            self.P[0] = softmax(
-                (self.Q * self.X[0]).reshape(self.num_tokens, 1)
-                @ (self.K * self.X[0]).reshape(1, self.num_tokens),
-                dim=-1,
-            )
-            self.dX[0] = self.P[0] @ (self.V * self.X[0])
-
-        def step_dynamics(self):
-            for step in range(1, self.num_steps):
-                self.X[step] = self.X[step - 1] + self.dX[step - 1] * self.dt
-
-                self.P[step] = softmax(
-                    (self.Q * self.X[step]).reshape(self.num_tokens, 1)
-                    @ (self.K * self.X[step]).reshape(1, self.num_tokens),
-                    dim=-1,
-                )
-                self.dX[step] = self.P[step] @ (self.V * self.X[step])
-
-    return (Attn_1D,)
 
 
 @app.cell(hide_code=True)
@@ -202,116 +130,6 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(np, softmax, torch):
-    class Attention:
-        def __init__(
-            self,
-            K: np.ndarray | torch.Tensor,
-            Q: np.ndarray | torch.Tensor,
-            V: np.ndarray | torch.Tensor,
-            X: np.ndarray
-            | torch.Tensor,  # shape: token_dimension x num_tokens
-            T=5,
-            dt=0.05,
-        ) -> None:
-
-            assert K.shape == Q.shape, "K and Q must have the same shape"
-
-            assert X.ndim == 2, "X should have two dimension"
-            assert X.shape[0] == Q.shape[1], (
-                "Q and K must be of shape d_key x d_token. Q.shape[1] does not equal d_token."
-            )
-            assert V.shape[0] == V.shape[1], (
-                "V must be square: it is a linear operator on tokens x_i."
-            )
-            assert V.shape[0] == X.shape[0], (
-                "V must have the same dimension as the token dimension."
-            )
-
-            assert T > 0, "Total time T must be greater than 0."
-            assert dt > 0, "Timestep dt must be greater than 0."
-            self.K = torch.as_tensor(K, dtype=torch.float64)
-            self.Q = torch.as_tensor(Q, dtype=torch.float64)
-            self.V = torch.as_tensor(V, dtype=torch.float64)
-            self.X_init = torch.as_tensor(X, dtype=torch.float64)
-            self.num_tokens = X.shape[-1]
-            self.token_dim = X.shape[0] if X.ndim > 1 else 1
-            self.T = T
-            self.dt = dt
-            self.num_steps = int(T / dt) + 1
-
-            # self.X = torch.zeros(
-            #     (self.num_steps, self.token_dim, self.num_tokens),
-            #     dtype=torch.float64,
-            # )
-            # self.dX = torch.zeros(
-            #     (self.num_steps, self.token_dim, self.num_tokens),
-            #     dtype=torch.float64,
-            # )
-
-            self.P = torch.zeros(
-                self.num_steps,
-                self.num_tokens,
-                self.num_tokens,
-                dtype=torch.float64,
-            )
-
-            # Rescaled dynamics are our default, so we will only explicitly work with z
-            self.Z = torch.zeros(
-                self.num_steps,
-                self.token_dim,
-                self.num_tokens,
-                dtype=torch.float64,
-            )
-            self.Z[0] = self.X_init
-            # Initialize P(0)
-            self.P[0] = softmax(
-                (self.Q @ self.Z[0]).T @ (self.K @ self.Z[0]),
-                dim=-1,
-            )
-            # initialize dZ
-            self.dZ = torch.zeros(
-                self.num_steps,
-                self.token_dim,
-                self.num_tokens,
-                dtype=torch.float64,
-            )
-            # self.Z_ex =
-            self.dZ[0] = self.V @ (
-                (torch.matrix_exp(0 * V) @ self.Z[0]) @ self.P[0].T
-                - (torch.matrix_exp(0 * V) @ self.Z[0])
-            )
-
-        def rescaled_dynamics(self):
-            for step in range(1, self.num_steps):
-                self.Z[step] = self.Z[step - 1] + self.dZ[step - 1] * self.dt
-
-                self.P[step] = softmax(
-                    (
-                        self.Q
-                        @ (
-                            torch.matrix_exp(step * self.dt * self.V)
-                            @ self.Z[step]
-                        )
-                    ).T
-                    @ (
-                        self.K
-                        @ (
-                            torch.matrix_exp(step * self.dt * self.V)
-                            @ self.Z[step]
-                        )
-                    ),
-                    dim=-1,
-                )
-
-                self.dZ[step] = self.V @ (
-                    self.Z[step] @ self.P[step].T - self.Z[step]
-                )
-
-    return (Attention,)
-
-
-@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
  
@@ -320,24 +138,39 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(torch):
-    z = torch.rand(3, 10)
-    z[:, 9] = torch.tensor([-10, -10, -10]) + torch.rand(3)
+def _(device, torch):
+    z = torch.rand(3, 10, device=device)
+    z[:, 9] = torch.tensor([-10, -10, -10], device=device) + torch.rand(
+        3, device=device
+    )
     Vz = z - z.T.unsqueeze(-1)
     Vz[-1]
     return
 
 
 @app.cell(hide_code=True)
-def _(Attn_1D, k_input, mo, np, num_tokens_input, q_input, torch, v_input):
+def _(
+    Attn_1D,
+    device,
+    k_input,
+    mo,
+    np,
+    num_tokens_input,
+    q_input,
+    torch,
+    v_input,
+):
     import plotly.graph_objects as _go_sim
 
     _num_tokens_sim = int(num_tokens_input.value)
-    _generator_sim = torch.Generator().manual_seed(_num_tokens_sim)
+    _generator_sim = torch.Generator(device=device).manual_seed(
+        _num_tokens_sim
+    )
     _initial_tokens_sim = torch.randn(
         _num_tokens_sim,
         generator=_generator_sim,
         dtype=torch.float64,
+        device=device,
     )
 
     A1 = Attn_1D(
@@ -589,30 +422,31 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(Attention, mo, np, num_tokens_2d_input, torch):
+def _(Attention, device, mo, np, num_tokens_2d_input, torch):
     import plotly.graph_objects as _go_2d
 
     _num_tokens_2d = int(num_tokens_2d_input.value)
-    _generator_2d = torch.Generator().manual_seed(_num_tokens_2d)
+    _generator_2d = torch.Generator(device=device).manual_seed(_num_tokens_2d)
     _initial_tokens_2d = (
         torch.rand(
             (2, _num_tokens_2d),
             generator=_generator_2d,
             dtype=torch.float64,
+            device=device,
         )
         * 2
         - 1
     )
 
-    V = torch.rand((2, 2), dtype=torch.float64) * 2 - 1
+    V = torch.rand((2, 2), dtype=torch.float64, device=device) * 2 - 1
     V = V.T @ V
 
-    Q = torch.rand((2, 2), dtype=torch.float64) * 2 - 1
+    Q = torch.rand((2, 2), dtype=torch.float64, device=device) * 2 - 1
     Q = Q.T @ Q
 
     Attn2d = Attention(
-        K=torch.eye(2, dtype=torch.float64),
-        Q=Q + torch.eye(2),
+        K=torch.eye(2, dtype=torch.float64, device=device),
+        Q=Q + torch.eye(2, dtype=torch.float64, device=device),
         V=V,
         X=_initial_tokens_2d,
         T=100,
@@ -861,29 +695,32 @@ def convex_token_control(mo):
 
 
 @app.cell(hide_code=True)
-def _(Attention, N, torch):
-    A = torch.eye(3, dtype=torch.float64)
-    X = torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5
+def _(Attention, N, device, torch):
+    A = torch.eye(3, dtype=torch.float64, device=device)
+    X = (
+        torch.rand((3, int(N.value)), dtype=torch.float64, device=device) * 10
+        - 5
+    )
     X_offset = X + 5
 
     convexClustering = Attention(
         K=A,
         Q=A.T,
-        V=torch.eye(3, dtype=torch.float64),
+        V=torch.eye(3, dtype=torch.float64, device=device),
         X=X,
         T=10,
     )
     OffsetConvCluster = Attention(
         K=A,
         Q=A.T,
-        V=torch.eye(3, dtype=torch.float64),
+        V=torch.eye(3, dtype=torch.float64, device=device),
         X=X_offset,
         T=10,
     )
     lambdaVConvCluster = Attention(
         K=A,
         Q=A.T,
-        V=torch.eye(3, dtype=torch.float64) * 5,
+        V=torch.eye(3, dtype=torch.float64, device=device) * 5,
         X=X,
         T=10,
     )
@@ -1228,28 +1065,38 @@ def lambda_v_cluster_plot(lambdaVConvCluster, make_convex_z_plot):
 
 
 @app.cell
-def identity_rank_histograms(Attention, matrix_rank, np, torch):
+def identity_rank_histograms(
+    ForgetfulAttention,
+    device,
+    matrix_rank,
+    np,
+    torch,
+):
     import matplotlib.pyplot as _plt_identity_rank
 
     _identity_token_counts = [5, 10, 20, 50, 100, 200, 500, 1000]
     _identity_rank_histories = []
-    _identity_trials = 500
-    _identity_matrix = torch.eye(3, dtype=torch.float64)
+    _identity_trials = 1500
+    _identity_matrix = torch.eye(3, dtype=torch.float64, device=device)
 
     for _identity_n in _identity_token_counts:
-        _identity_ranks = torch.empty(_identity_trials, dtype=torch.int64)
+        _identity_ranks = torch.empty(
+            _identity_trials, dtype=torch.int64, device=device
+        )
         for _identity_trial in range(_identity_trials):
-            _identity_cluster = Attention(
+            _identity_cluster = ForgetfulAttention(
                 K=_identity_matrix,
                 Q=_identity_matrix,
                 V=_identity_matrix,
-                X=torch.rand((3, _identity_n), dtype=torch.float64) * 10 - 5,
+                X=torch.rand(
+                    (3, _identity_n), dtype=torch.float64, device=device
+                )
+                * 10
+                - 5,
                 T=10,
             )
             _identity_cluster.rescaled_dynamics()
-            _identity_ranks[_identity_trial] = matrix_rank(
-                _identity_cluster.P[-1]
-            )
+            _identity_ranks[_identity_trial] = matrix_rank(_identity_cluster.P)
         _identity_rank_histories.append(_identity_ranks)
 
     _identity_rank_max = max(
@@ -1274,7 +1121,7 @@ def identity_rank_histograms(Attention, matrix_rank, np, torch):
         _identity_rank_histories,
     ):
         _identity_axis.hist(
-            _identity_ranks.numpy(),
+            _identity_ranks.cpu().numpy(),
             bins=_identity_rank_bins,
             color="#4f9d69",
             edgecolor="white",
@@ -1310,14 +1157,16 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def non_psd_cluster_simulation(Attention, N, torch):
-    B = torch.rand((3, 3), dtype=torch.float64) * 2 - 1
+def non_psd_cluster_simulation(Attention, N, device, torch):
+    B = torch.rand((3, 3), dtype=torch.float64, device=device) * 2 - 1
 
     convexClusteringPSD = Attention(
         K=B,
         Q=B.T,
-        V=torch.eye(3, dtype=torch.float64),
-        X=torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5,
+        V=torch.eye(3, dtype=torch.float64, device=device),
+        X=torch.rand((3, int(N.value)), dtype=torch.float64, device=device)
+        * 10
+        - 5,
         T=10,
     )
     convexClusteringPSD.rescaled_dynamics()
@@ -1350,46 +1199,53 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def rank_histograms(Attention, matrix_rank, np, torch):
+def rank_histograms(ForgetfulAttention, device, matrix_rank, np, torch):
     import matplotlib.pyplot as _plt_rank
 
-    _rank_token_counts = [5, 10, 50, 100]
+    rank_N = [5, 10, 50, 100, 500, 1000, 5000, 10000]
     _rank_histories = []
-    trials = 500
+    trials = 1500
 
-    for _rank_n in _rank_token_counts:
-        _ranks = torch.empty(trials, dtype=torch.int64)
+    for _rank_n in rank_N:
+        _ranks = torch.empty(trials, dtype=torch.int64, device=device)
         for _rank_trial in range(trials):
-            _rank_B = torch.rand((3, 3), dtype=torch.float64) * 2 - 1
-            _rank_cluster = Attention(
+            _rank_B = (
+                torch.rand((3, 3), dtype=torch.float64, device=device) * 2 - 1
+            )
+            _rank_cluster = ForgetfulAttention(
                 K=_rank_B,
                 Q=_rank_B.T,
-                V=torch.eye(3, dtype=torch.float64),
-                X=torch.rand((3, _rank_n), dtype=torch.float64) * 10 - 5,
+                V=torch.eye(3, dtype=torch.float64, device=device),
+                X=torch.rand((3, _rank_n), dtype=torch.float64, device=device)
+                * 10
+                - 5,
                 T=10,
             )
             _rank_cluster.rescaled_dynamics()
-            _ranks[_rank_trial] = matrix_rank(_rank_cluster.P[-1])
+            _ranks[_rank_trial] = matrix_rank(_rank_cluster.P)
         _rank_histories.append(_ranks)
 
     _rank_max = max(int(_ranks.max()) for _ranks in _rank_histories)
     _rank_bins = np.arange(0.5, _rank_max + 1.5, 1)
     _rank_tick_step = max(1, int(np.ceil(_rank_max / 10)))
+    _rank_columns = min(2, len(rank_N))
+    _rank_rows = int(np.ceil(len(rank_N) / _rank_columns))
     rank_histogram_figure, _rank_axes = _plt_rank.subplots(
-        2,
-        2,
-        figsize=(11, 8),
+        _rank_rows,
+        _rank_columns,
+        figsize=(5.5 * _rank_columns, 4 * _rank_rows),
         sharex=True,
         sharey=True,
+        squeeze=False,
     )
 
     for _rank_axis, _rank_n, _ranks in zip(
         _rank_axes.flat,
-        _rank_token_counts,
+        rank_N,
         _rank_histories,
     ):
         _rank_axis.hist(
-            _ranks.numpy(),
+            _ranks.cpu().numpy(),
             bins=_rank_bins,
             color="#6f83d6",
             edgecolor="white",
@@ -1402,6 +1258,9 @@ def rank_histograms(Attention, matrix_rank, np, torch):
         _rank_axis.set_xticks(np.arange(1, _rank_max + 1, _rank_tick_step))
         _rank_axis.grid(axis="y", alpha=0.2)
 
+    for _rank_axis in _rank_axes.flat[len(rank_N) :]:
+        _rank_axis.set_visible(False)
+
     rank_histogram_figure.suptitle(
         "Distribution of Final Attention-Matrix Rank",
         fontsize=15,
@@ -1412,12 +1271,14 @@ def rank_histograms(Attention, matrix_rank, np, torch):
 
 
 @app.cell
-def _(Attention, N, torch):
+def _(Attention, N, device, torch):
     convexClusteringNonPSD = Attention(
-        K=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
-        Q=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
-        V=torch.eye(3, dtype=torch.float64),
-        X=torch.rand((3, int(N.value)), dtype=torch.float64) * 10 - 5,
+        K=torch.rand((3, 3), dtype=torch.float64, device=device) * 2 - 1,
+        Q=torch.rand((3, 3), dtype=torch.float64, device=device) * 2 - 1,
+        V=torch.eye(3, dtype=torch.float64, device=device),
+        X=torch.rand((3, int(N.value)), dtype=torch.float64, device=device)
+        * 10
+        - 5,
         T=10,
     )
     convexClusteringNonPSD.rescaled_dynamics()
@@ -1436,27 +1297,39 @@ def non_psd_cluster_plot(N, convexClusteringNonPSD, make_convex_z_plot, mo):
 
 
 @app.cell
-def non_psd_rank_histograms(Attention, matrix_rank, np, torch):
+def non_psd_rank_histograms(
+    ForgetfulAttention,
+    device,
+    matrix_rank,
+    np,
+    torch,
+):
     import matplotlib.pyplot as _plt_non_psd_rank
 
-    _non_psd_token_counts = [5, 10, 50, 100]
+    _non_psd_token_counts = [5, 10, 50, 100, 500, 1000]
     _non_psd_rank_histories = []
     _non_psd_trials = 500
 
     for _non_psd_n in _non_psd_token_counts:
-        _non_psd_ranks = torch.empty(_non_psd_trials, dtype=torch.int64)
+        _non_psd_ranks = torch.empty(
+            _non_psd_trials, dtype=torch.int64, device=device
+        )
         for _non_psd_trial in range(_non_psd_trials):
-            _non_psd_cluster = Attention(
-                K=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
-                Q=torch.rand((3, 3), dtype=torch.float64) * 2 - 1,
-                V=torch.eye(3, dtype=torch.float64),
-                X=torch.rand((3, _non_psd_n), dtype=torch.float64) * 10 - 5,
+            _non_psd_cluster = ForgetfulAttention(
+                K=torch.rand((3, 3), dtype=torch.float64, device=device) * 2
+                - 1,
+                Q=torch.rand((3, 3), dtype=torch.float64, device=device) * 2
+                - 1,
+                V=torch.eye(3, dtype=torch.float64, device=device),
+                X=torch.rand(
+                    (3, _non_psd_n), dtype=torch.float64, device=device
+                )
+                * 10
+                - 5,
                 T=10,
             )
             _non_psd_cluster.rescaled_dynamics()
-            _non_psd_ranks[_non_psd_trial] = matrix_rank(
-                _non_psd_cluster.P[-1]
-            )
+            _non_psd_ranks[_non_psd_trial] = matrix_rank(_non_psd_cluster.P)
         _non_psd_rank_histories.append(_non_psd_ranks)
 
     _non_psd_rank_max = max(
@@ -1478,7 +1351,7 @@ def non_psd_rank_histograms(Attention, matrix_rank, np, torch):
         _non_psd_rank_histories,
     ):
         _non_psd_axis.hist(
-            _non_psd_ranks.numpy(),
+            _non_psd_ranks.cpu().numpy(),
             bins=_non_psd_rank_bins,
             color="#d97941",
             edgecolor="white",
