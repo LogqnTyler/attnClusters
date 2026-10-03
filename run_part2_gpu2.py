@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 GPU_INDEX = 2
 DEVICE = torch.device(f"cuda:{GPU_INDEX}")
@@ -30,7 +31,12 @@ def compute_ranks_part2() -> np.ndarray:
     ranks = np.zeros((len(NS), N_TRIALS))
 
     for i, token_count in enumerate(NS):
-        for trial in range(N_TRIALS):
+        trials = tqdm(
+            range(N_TRIALS),
+            desc=f"Part 2 | GPU {GPU_INDEX} | N={token_count}",
+            unit="trial",
+        )
+        for trial in trials:
             attention = ForgetfulAttention(
                 K,
                 Q,
@@ -39,7 +45,6 @@ def compute_ranks_part2() -> np.ndarray:
             )
             attention.rescaled_dynamics()
             ranks[i, trial] = torch.linalg.matrix_rank(attention.P).item()
-        print(f"Part 2: completed N={token_count} on {DEVICE}", flush=True)
 
     np.save(OUTPUT_PATH, ranks)
     return ranks
