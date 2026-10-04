@@ -53,6 +53,59 @@ def _(torch):
 
 
 @app.cell(hide_code=True)
+def rank_histogram_helper(Ns, Path, mo, np):
+    def makeRankHistogram(filename, title):
+        import matplotlib.pyplot as plt
+
+        path = Path(filename)
+        if not path.exists():
+            return mo.md(f"Run the rank computation to create `{filename}`.")
+
+        ranks = np.load(path)
+        tokenCounts = Ns[: ranks.shape[0]]
+        columns = 2
+        rows = int(np.ceil(len(tokenCounts) / columns))
+        figure, axes = plt.subplots(
+            rows,
+            columns,
+            figsize=(12, 4 * rows),
+            squeeze=False,
+        )
+
+        for index, N in enumerate(tokenCounts):
+            row = index // columns
+            column = index % columns
+            axis = axes[row, column]
+            rankValues = ranks[index]
+            rankMin = int(np.nanmin(rankValues))
+            rankMax = int(np.nanmax(rankValues))
+            bins = np.arange(rankMin - 0.5, rankMax + 1.5, 1)
+
+            axis.hist(
+                rankValues,
+                bins=bins,
+                color="#4c72b0",
+                edgecolor="white",
+                linewidth=0.8,
+                rwidth=0.9,
+            )
+            axis.set_title(f"N = {N}")
+            axis.set_xlabel("Final attention rank")
+            axis.set_ylabel("Frequency")
+            axis.set_xticks(range(rankMin, rankMax + 1))
+            axis.grid(axis="y", alpha=0.2)
+
+        for index in range(len(tokenCounts), rows * columns):
+            axes.flat[index].set_visible(False)
+
+        figure.suptitle(title, fontsize=15)
+        figure.tight_layout(rect=(0, 0, 1, 0.98))
+        return figure
+
+    return (makeRankHistogram,)
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Part 1: $Q, K, V = I_3$
@@ -80,6 +133,16 @@ def _(D, ForgetfulAttention, N_trials, Ns, Path, V, matrix_rank, np, torch):
             ranks = np.load("ranks_case1.npy")
 
     computeRanksPart1()
+    return
+
+
+@app.cell(hide_code=True)
+def part_1_rank_histogram(makeRankHistogram):
+    part1RankHistogram = makeRankHistogram(
+        "ranks_case1.npy",
+        "Part 1: Final Attention-Rank Distributions",
+    )
+    part1RankHistogram
     return
 
 
@@ -138,6 +201,16 @@ def part_2_ranks(
 
 
 @app.cell(hide_code=True)
+def part_2_rank_histogram(makeRankHistogram):
+    part2RankHistogram = makeRankHistogram(
+        "ranks_case2.npy",
+        "Part 2: Final Attention-Rank Distributions",
+    )
+    part2RankHistogram
+    return
+
+
+@app.cell(hide_code=True)
 def part_3_header(mo):
     mo.md(r"""
     ## Part 3: Random $Q, K$, $V = I_3$
@@ -175,6 +248,16 @@ def part_3_ranks(
             ranks = np.load("ranks_case3.npy")
 
     computeRanksPart3()
+    return
+
+
+@app.cell(hide_code=True)
+def part_3_rank_histogram(makeRankHistogram):
+    part3RankHistogram = makeRankHistogram(
+        "ranks_case3.npy",
+        "Part 3: Final Attention-Rank Distributions",
+    )
+    part3RankHistogram
     return
 
 

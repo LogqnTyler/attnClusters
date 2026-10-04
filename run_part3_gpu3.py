@@ -15,7 +15,7 @@ from attention import ForgetfulAttention
 
 D = 3
 V = torch.eye(D)
-N_TRIALS = 1500
+N_TRIALS = 10000
 NS = [5, 10, 50, 100, 500, 1000, 5000]
 SEED = 42
 OUTPUT_PATH = Path(__file__).resolve().parent / "ranks_case3.npy"
