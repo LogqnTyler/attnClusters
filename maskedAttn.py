@@ -67,6 +67,7 @@ def _(Attention, device, np, softmax, torch):
                 (self.Q @ self.Z[0]).T @ (self.K @ self.Z[0]) + self.mask,
                 dim=-1,
             )
+            self.dZ[0] = self.V @ (self.Z[0] @ self.P[0].T - self.Z[0])
 
         def rescaled_dynamics(self) -> None:
             if not self._store_history:
@@ -121,7 +122,14 @@ def _(device, make_spd_matrix, torch):
 
 
 @app.cell
-def _(MaskedAttention, device, num_tokens_masked_input, sampleQK, torch):
+def _(
+    Attention,
+    MaskedAttention,
+    device,
+    num_tokens_masked_input,
+    sampleQK,
+    torch,
+):
     _masked_num_tokens = int(num_tokens_masked_input.value)
     _masked_identity_matrix = torch.eye(3, dtype=torch.float64, device=device)
     masked_initial_tokens = (
@@ -134,6 +142,16 @@ def _(MaskedAttention, device, num_tokens_masked_input, sampleQK, torch):
         Q=_masked_identity_matrix,
         V=_masked_identity_matrix,
         X=masked_initial_tokens.clone(),
+        T=10,
+        dt=0.05,
+    )
+    unmasked_identity_attn = Attention(
+        K=_masked_identity_matrix,
+        Q=_masked_identity_matrix,
+        V=_masked_identity_matrix,
+        X=masked_initial_tokens.clone(),
+        T=10,
+        dt=0.05,
     )
 
     Q, K = sampleQK(3)
@@ -142,6 +160,16 @@ def _(MaskedAttention, device, num_tokens_masked_input, sampleQK, torch):
         Q=Q,
         V=_masked_identity_matrix,
         X=masked_initial_tokens.clone(),
+        T=10,
+        dt=0.05,
+    )
+    unmasked_psd_attn = Attention(
+        K=K,
+        Q=Q,
+        V=_masked_identity_matrix,
+        X=masked_initial_tokens.clone(),
+        T=10,
+        dt=0.05,
     )
     _masked_random_K = (
         torch.rand((3, 3), dtype=torch.float64, device=device) * 2 - 1
@@ -154,8 +182,25 @@ def _(MaskedAttention, device, num_tokens_masked_input, sampleQK, torch):
         Q=_masked_random_Q,
         V=_masked_identity_matrix,
         X=masked_initial_tokens.clone(),
+        T=10,
+        dt=0.05,
     )
-    return maskedAttn, masked_identity_attn, masked_psd_attn
+    unmasked_random_attn = Attention(
+        K=_masked_random_K,
+        Q=_masked_random_Q,
+        V=_masked_identity_matrix,
+        X=masked_initial_tokens.clone(),
+        T=10,
+        dt=0.05,
+    )
+    return (
+        maskedAttn,
+        masked_identity_attn,
+        masked_psd_attn,
+        unmasked_identity_attn,
+        unmasked_psd_attn,
+        unmasked_random_attn,
+    )
 
 
 @app.cell
@@ -165,11 +210,21 @@ def _(maskedAttn):
 
 
 @app.cell
-def _(masked_identity_attn, masked_psd_attn):
+def _(
+    masked_identity_attn,
+    masked_psd_attn,
+    unmasked_identity_attn,
+    unmasked_psd_attn,
+    unmasked_random_attn,
+):
     masked_identity_attn.rescaled_dynamics()
     masked_psd_attn.rescaled_dynamics()
+    unmasked_identity_attn.rescaled_dynamics()
+    unmasked_psd_attn.rescaled_dynamics()
+    unmasked_random_attn.rescaled_dynamics()
+    unmasked_comparison_ready = True
     masked_comparison_ready = True
-    return (masked_comparison_ready,)
+    return masked_comparison_ready, unmasked_comparison_ready
 
 
 @app.cell
@@ -306,6 +361,10 @@ def _(
     mo,
     np,
     num_tokens_masked_input,
+    unmasked_comparison_ready,
+    unmasked_identity_attn,
+    unmasked_psd_attn,
+    unmasked_random_attn,
 ):
     import anywidget as _anywidget_masked_z
     import json as _json_masked_z
@@ -570,9 +629,6 @@ def _(
             times=_times.tolist(),
         )
 
-    if not masked_comparison_ready:
-        raise RuntimeError("Comparison dynamics have not run")
-
     masked_identity_z_plot = _make_masked_z_plot(
         masked_identity_attn,
         "Q = K = I3: Rescaled Token Dynamics",
@@ -588,15 +644,41 @@ def _(
         "Q, K independently random: Rescaled Token Dynamics",
         "masked-random-z-camera",
     )
+    unmasked_identity_z_plot = _make_masked_z_plot(
+        unmasked_identity_attn,
+        "Unmasked: Q = K = I3: Rescaled Token Dynamics",
+        "unmasked-identity-z-camera",
+    )
+    unmasked_psd_z_plot = _make_masked_z_plot(
+        unmasked_psd_attn,
+        "Unmasked: Q random; K = (Q^T)^-1 M, M SPD: Rescaled Token Dynamics",
+        "unmasked-psd-z-camera",
+    )
+    unmasked_random_z_plot = _make_masked_z_plot(
+        unmasked_random_attn,
+        "Unmasked: Q, K independently random: Rescaled Token Dynamics",
+        "unmasked-random-z-camera",
+    )
+    if not masked_comparison_ready or not unmasked_comparison_ready:
+        raise RuntimeError("Comparison dynamics have not run")
+
     mo.vstack(
         [
             num_tokens_masked_input,
+            mo.md("## Masked attention"),
             mo.md("### Q = K = I3"),
             masked_identity_z_plot,
             mo.md("### Q random; K = (Q^T)^-1 M, M SPD"),
             masked_psd_z_plot,
             mo.md("### Q, K independently random"),
             masked_z_plot,
+            mo.md("## Unmasked controls"),
+            mo.md("### Q = K = I3"),
+            unmasked_identity_z_plot,
+            mo.md("### Q random; K = (Q^T)^-1 M, M SPD"),
+            unmasked_psd_z_plot,
+            mo.md("### Q, K independently random"),
+            unmasked_random_z_plot,
         ],
         gap=1.0,
     )
