@@ -1076,7 +1076,7 @@ def identity_rank_histograms(
 
     _identity_token_counts = [5, 10, 20, 50, 100, 200, 500, 1000]
     _identity_rank_histories = []
-    _identity_trials = 1500
+    _identity_trials = 10
     _identity_matrix = torch.eye(3, dtype=torch.float64, device=device)
 
     for _identity_n in _identity_token_counts:
@@ -1308,7 +1308,7 @@ def non_psd_rank_histograms(
 
     _non_psd_token_counts = [5, 10, 50, 100, 500, 1000]
     _non_psd_rank_histories = []
-    _non_psd_trials = 500
+    _non_psd_trials = 10
 
     for _non_psd_n in _non_psd_token_counts:
         _non_psd_ranks = torch.empty(
